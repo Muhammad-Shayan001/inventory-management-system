@@ -12,6 +12,7 @@ import shelflife.ui.inventory.SuppliersPanel;
 import shelflife.ui.reports.ActivityLogPanel;
 import shelflife.ui.reports.DashboardReportsPanel;
 import shelflife.ui.reports.ReorderListPanel;
+import shelflife.util.SeedDataUtil;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
@@ -137,6 +138,8 @@ public class ShelfLifeApp extends JFrame {
         this.financialService = new FinancialServiceImpl(dataStore, inventoryService, salesService, capitalService, expenseService, cashAccountService, customerCreditService, supplierPayableService, purchaseService);
         this.heldBillService = new HeldBillServiceImpl(dataStore);
         this.cashierShiftService = new CashierShiftServiceImpl(dataStore);
+
+        SeedDataUtil.seedIfEmpty(inventoryService, supplierService);
 
         initWindow();
         initPanels();

@@ -37,6 +37,10 @@ public class CustomerCreditDialog extends JDialog {
     private Customer selectedCustomer = null;
     private static final DateTimeFormatter DT_FMT = DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm");
 
+    public CustomerCreditDialog(Frame parent, CustomerCreditService creditService) {
+        this(parent, creditService, "admin");
+    }
+
     public CustomerCreditDialog(Frame parent, CustomerCreditService creditService, String currentCashier) {
         super(parent, "Customer Credit Ledger (Khata / Udhaar)", true);
         this.creditService = creditService;

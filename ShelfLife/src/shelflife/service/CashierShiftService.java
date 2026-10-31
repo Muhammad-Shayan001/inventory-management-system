@@ -20,6 +20,14 @@ public interface CashierShiftService {
 
     CashierShift closeShift(String shiftId, BigDecimal actualCashCounted, String closeNotes) throws Exception;
 
+    default CashierShift getActiveShiftForCashier(String cashierUsername) {
+        return getCurrentOpenShift(cashierUsername);
+    }
+
+    default void recordCashSale(String shiftId, BigDecimal amount) throws Exception {
+        recordCashSale(amount);
+    }
+
     List<CashierShift> getAllShifts();
 
     void reload();

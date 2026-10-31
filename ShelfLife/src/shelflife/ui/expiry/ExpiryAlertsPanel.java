@@ -48,6 +48,9 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
     private JComboBox<String> cmbWastageReason;
     private JButton btnRecordWastage;
     private JButton btnViewWastageHistory;
+    private JButton btnRecallBatch;
+    private JButton btnUnrecallBatch;
+    private JButton btnTraceability;
 
     private ProductBatch selectedBatch = null;
 
@@ -141,7 +144,7 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
                 Theme.TEXT_PRIMARY
         ));
 
-        String[] cols = {"Batch ID", "Product ID", "Product Name", "Available Qty", "Expiry Date", "Days Remaining", "Status"};
+        String[] cols = {"Batch ID", "Product ID", "Product Name", "Available Qty", "Expiry Date", "Days Remaining", "Status", "Waste Risk", "Clearance %"};
         modelAlerts = new DefaultTableModel(cols, 0) {
             @Override
             public boolean isCellEditable(int row, int col) {
@@ -153,7 +156,7 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
         tblAlerts.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         Styles.styleTable(tblAlerts);
 
-        int[] alertWidths = {95, 85, 170, 95, 100, 105, 120};
+        int[] alertWidths = {90, 80, 160, 90, 95, 105, 115, 140, 85};
         for (int i = 0; i < alertWidths.length && i < tblAlerts.getColumnCount(); i++) {
             tblAlerts.getColumnModel().getColumn(i).setPreferredWidth(alertWidths[i]);
         }
@@ -245,6 +248,21 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
         btnRecordWastage.addActionListener(e -> handleRecordWastage());
         formControls.add(btnRecordWastage);
 
+        btnRecallBatch = Styles.createSecondaryButton("Recall Batch");
+        btnRecallBatch.setEnabled(false);
+        btnRecallBatch.addActionListener(e -> handleRecallBatch());
+        formControls.add(btnRecallBatch);
+
+        btnUnrecallBatch = Styles.createSecondaryButton("Unrecall Batch");
+        btnUnrecallBatch.setEnabled(false);
+        btnUnrecallBatch.addActionListener(e -> handleUnrecallBatch());
+        formControls.add(btnUnrecallBatch);
+
+        btnTraceability = Styles.createSecondaryButton("Traceability Audit");
+        btnTraceability.setEnabled(false);
+        btnTraceability.addActionListener(e -> showTraceabilityDialog());
+        formControls.add(btnTraceability);
+
         btnViewWastageHistory = Styles.createSecondaryButton("View Wastage History");
         btnViewWastageHistory.addActionListener(e -> showWastageHistoryDialog());
         formControls.add(btnViewWastageHistory);
@@ -264,7 +282,8 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
                 Product p = inventoryService.getProductById(selectedBatch.getProductId());
                 String pName = p != null ? p.getName() : selectedBatch.getProductId();
                 lblSelectedBatch.setText("Selected Batch: " + selectedBatch.getBatchId() + " (" + pName + 
-                        ") | Available: " + selectedBatch.getQuantity() + " units | Expiry: " + selectedBatch.getExpiryDate());
+                        ") | Available: " + selectedBatch.getQuantity() + " units | Expiry: " + selectedBatch.getExpiryDate() +
+                        (selectedBatch.isRecalled() ? " [RECALLED - BLOCKED]" : ""));
 
                 if (selectedBatch.getQuantity() > 0) {
                     spnWastageQuantity.setModel(new SpinnerNumberModel(1, 1, selectedBatch.getQuantity(), 1));
@@ -273,12 +292,76 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
                     lblSelectedBatch.setText(lblSelectedBatch.getText() + " [OUT OF STOCK]");
                     btnRecordWastage.setEnabled(false);
                 }
+                btnTraceability.setEnabled(true);
+                btnRecallBatch.setEnabled(!selectedBatch.isRecalled());
+                btnUnrecallBatch.setEnabled(selectedBatch.isRecalled());
                 return;
             }
         }
         selectedBatch = null;
         lblSelectedBatch.setText("Please select a batch from the table above to record wastage.");
         btnRecordWastage.setEnabled(false);
+        btnRecallBatch.setEnabled(false);
+        btnUnrecallBatch.setEnabled(false);
+        btnTraceability.setEnabled(false);
+    }
+
+    private void handleRecallBatch() {
+        if (selectedBatch == null) return;
+        String reason = JOptionPane.showInputDialog(this, "Enter reason for batch recall:", "Batch Recall", JOptionPane.WARNING_MESSAGE);
+        if (reason != null && !reason.trim().isEmpty()) {
+            try {
+                expiryService.recallBatch(selectedBatch.getBatchId(), reason.trim(), "admin");
+                JOptionPane.showMessageDialog(this, "Batch " + selectedBatch.getBatchId() + " successfully recalled and blocked from sale.", "Batch Recalled", JOptionPane.INFORMATION_MESSAGE);
+                refreshData();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Recall failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private void handleUnrecallBatch() {
+        if (selectedBatch == null) return;
+        int confirm = JOptionPane.showConfirmDialog(this, "Unrecall batch " + selectedBatch.getBatchId() + " and return to sellable inventory?", "Confirm Unrecall", JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            try {
+                expiryService.unrecallBatch(selectedBatch.getBatchId(), "admin");
+                JOptionPane.showMessageDialog(this, "Batch " + selectedBatch.getBatchId() + " returned to sellable status.", "Batch Unrecalled", JOptionPane.INFORMATION_MESSAGE);
+                refreshData();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Unrecall failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private void showTraceabilityDialog() {
+        if (selectedBatch == null) return;
+        java.util.Map<String, Object> data = expiryService.getBatchTraceability(selectedBatch.getBatchId());
+        StringBuilder sb = new StringBuilder();
+        sb.append("========================================================\n");
+        sb.append("               BATCH TRACEABILITY AUDIT                 \n");
+        sb.append("========================================================\n\n");
+        sb.append("Batch ID:               ").append(selectedBatch.getBatchId()).append("\n");
+        sb.append("Product ID:             ").append(selectedBatch.getProductId()).append("\n");
+        Product p = inventoryService.getProductById(selectedBatch.getProductId());
+        sb.append("Product Name:           ").append(p != null ? p.getName() : "Unknown").append("\n");
+        sb.append("Supplier ID:            ").append(selectedBatch.getSupplierId()).append("\n");
+        sb.append("Received Date:          ").append(selectedBatch.getReceivedDate()).append("\n");
+        sb.append("Expiry Date:            ").append(selectedBatch.getExpiryDate()).append("\n");
+        sb.append("Unit Cost Price:        Rs. ").append(selectedBatch.getCostPrice()).append("\n");
+        sb.append("Current Available Qty:  ").append(selectedBatch.getQuantity()).append(" units\n");
+        sb.append("Recalled Status:        ").append(selectedBatch.isRecalled() ? "YES (BLOCKED FROM SALE)" : "NO (SELLABLE)").append("\n\n");
+        sb.append("Total Units Sold:       ").append(data.get("soldUnits")).append(" units\n");
+        sb.append("Total Units Wasted:     ").append(data.get("wastedUnits")).append(" units\n");
+        sb.append("Suggested Clearance %:  ").append(expiryService.getSuggestedClearanceDiscount(selectedBatch)).append("%\n");
+        sb.append("Assessed Waste Risk:    ").append(expiryService.calculateBatchWasteRisk(selectedBatch)).append("\n");
+
+        JTextArea ta = new JTextArea(sb.toString());
+        ta.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        ta.setEditable(false);
+        JScrollPane sp = new JScrollPane(ta);
+        sp.setPreferredSize(new Dimension(520, 360));
+        JOptionPane.showMessageDialog(this, sp, "Batch Traceability: " + selectedBatch.getBatchId(), JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void handleRecordWastage() {
@@ -428,6 +511,10 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
                     statusStr = "SAFE";
                 }
 
+                String riskStr = expiryService.calculateBatchWasteRisk(b);
+                int disc = expiryService.getSuggestedClearanceDiscount(b);
+                String clearanceStr = disc > 0 ? (disc + "% OFF") : "None";
+
                 modelAlerts.addRow(new Object[]{
                         b.getBatchId(),
                         b.getProductId(),
@@ -435,7 +522,9 @@ public class ExpiryAlertsPanel extends JPanel implements Refreshable {
                         b.getQuantity(),
                         b.getExpiryDate().toString(),
                         daysStr,
-                        statusStr
+                        statusStr,
+                        riskStr,
+                        clearanceStr
                 });
             }
         }

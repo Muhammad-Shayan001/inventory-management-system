@@ -1,0 +1,11 @@
+======================================================================
+   Compiling ShelfLife - Java OOP Inventory and Billing System
+======================================================================
+[1/2] Compiling main application source files...
+src\shelflife\ui\billing\BillingPanel.java:939: error: unreported exception Exception; must be caught or declared to be thrown
+                    cashierShiftService.recordCashSale(active.getShiftId(), committedSale.getTotalAmount());
+                                                      ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+1 error
+[ERROR] Application compilation failed!

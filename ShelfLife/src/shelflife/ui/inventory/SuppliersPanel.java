@@ -3,8 +3,11 @@ package shelflife.ui.inventory;
 import shelflife.model.Product;
 import shelflife.model.ProductBatch;
 import shelflife.model.Supplier;
+import shelflife.model.SupplierPayable;
+import shelflife.model.SupplierPayment;
 import shelflife.service.InventoryService;
 import shelflife.service.SupplierService;
+import shelflife.service.SupplierPayableService;
 import shelflife.ui.Refreshable;
 import shelflife.ui.UITheme;
 import shelflife.util.CurrencyUtil;
@@ -53,9 +56,18 @@ public class SuppliersPanel extends JPanel implements Refreshable {
     private DefaultTableModel batchHistoryModel;
     private JTable tblBatchHistory;
 
+    private final SupplierPayableService payableService;
+    private DefaultTableModel payablesModel;
+    private JTable tblPayables;
+
     public SuppliersPanel(InventoryService inventoryService, SupplierService supplierService) {
+        this(inventoryService, supplierService, null);
+    }
+
+    public SuppliersPanel(InventoryService inventoryService, SupplierService supplierService, SupplierPayableService payableService) {
         this.inventoryService = inventoryService;
         this.supplierService = supplierService;
+        this.payableService = payableService;
 
         setLayout(new BorderLayout(10, 10));
         setBackground(UITheme.BG_PAGE);
@@ -66,7 +78,7 @@ public class SuppliersPanel extends JPanel implements Refreshable {
     }
 
     private void initComponents() {
-        // Tabbed Pane: Tab 1 = Supplier Directory, Tab 2 = Stock-In Receiving
+        // Tabbed Pane: Tab 1 = Supplier Directory, Tab 2 = Stock-In Receiving, Tab 3 = Payables
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.setFont(UITheme.FONT_BOLD);
         tabbedPane.setBackground(UITheme.BG_PAGE);
@@ -74,6 +86,9 @@ public class SuppliersPanel extends JPanel implements Refreshable {
 
         tabbedPane.addTab("Supplier Directory", createSuppliersTab());
         tabbedPane.addTab("Stock-In & Purchase Intake", createStockIntakeTab());
+        if (payableService != null) {
+            tabbedPane.addTab("Payables & Settlements", createPayablesTab());
+        }
 
         add(tabbedPane, BorderLayout.CENTER);
     }
@@ -562,6 +577,117 @@ public class SuppliersPanel extends JPanel implements Refreshable {
                         sName,
                         b.getReceivedDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
                 });
+            }
+        }
+
+        refreshPayables();
+    }
+
+    private JPanel createPayablesTab() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBackground(UITheme.BG_PAGE);
+        panel.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        JPanel topBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        topBar.setOpaque(false);
+        JLabel lblTitle = new JLabel("Supplier Accounts Payable Ledger");
+        lblTitle.setFont(UITheme.FONT_BOLD);
+        topBar.add(lblTitle);
+
+        JButton btnRecordPayment = UITheme.createPrimaryButton("Record Settlement Payment");
+        btnRecordPayment.addActionListener(e -> showRecordPaymentDialog());
+        topBar.add(btnRecordPayment);
+
+        JButton btnRefreshPayables = UITheme.createSecondaryButton("Refresh");
+        btnRefreshPayables.addActionListener(e -> refreshPayables());
+        topBar.add(btnRefreshPayables);
+
+        panel.add(topBar, BorderLayout.NORTH);
+
+        String[] cols = {"Payable ID", "Supplier", "Purchase Ref", "Invoice Date", "Due Date", "Total Amount", "Amount Paid", "Balance Due", "Status", "Notes"};
+        payablesModel = new DefaultTableModel(cols, 0) {
+            @Override
+            public boolean isCellEditable(int r, int c) { return false; }
+        };
+        tblPayables = new JTable(payablesModel);
+        UITheme.styleTable(tblPayables);
+        tblPayables.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        panel.add(new JScrollPane(tblPayables), BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void refreshPayables() {
+        if (payableService == null || payablesModel == null) return;
+        payableService.reload();
+        payablesModel.setRowCount(0);
+        for (SupplierPayable sp : payableService.getAllPayables()) {
+            Supplier s = supplierService.getSupplierById(sp.getSupplierId());
+            String sName = s != null ? s.getName() : sp.getSupplierId();
+            payablesModel.addRow(new Object[]{
+                    sp.getPayableId(),
+                    sName,
+                    sp.getPurchaseRef(),
+                    sp.getInvoiceDate(),
+                    sp.getDueDate(),
+                    CurrencyUtil.formatPKR(sp.getTotalAmount()),
+                    CurrencyUtil.formatPKR(sp.getPaidAmount()),
+                    CurrencyUtil.formatPKR(sp.getBalanceDue()),
+                    sp.getStatus(),
+                    sp.getNotes()
+            });
+        }
+    }
+
+    private void showRecordPaymentDialog() {
+        if (payableService == null) return;
+        int row = tblPayables != null ? tblPayables.getSelectedRow() : -1;
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "Please select an outstanding payable from the table first.", "Selection Required", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        String payableId = (String) tblPayables.getValueAt(row, 0);
+        SupplierPayable sp = payableService.getPayable(payableId);
+        if (sp == null) {
+            JOptionPane.showMessageDialog(this, "Payable not found.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (sp.getBalanceDue().compareTo(BigDecimal.ZERO) <= 0) {
+            JOptionPane.showMessageDialog(this, "This payable is already fully settled.", "Settled", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        JPanel form = new JPanel(new GridLayout(4, 2, 8, 8));
+        form.add(new JLabel("Balance Due:"));
+        form.add(new JLabel(CurrencyUtil.formatPKR(sp.getBalanceDue())));
+
+        form.add(new JLabel("Payment Amount (Rs.):"));
+        JTextField txtAmount = new JTextField(sp.getBalanceDue().toPlainString());
+        form.add(txtAmount);
+
+        form.add(new JLabel("Payment Method:"));
+        JComboBox<String> cmbMethod = new JComboBox<>(new String[]{"CASH", "BANK_TRANSFER", "CHEQUE", "EASYPAISA", "JAZZCASH"});
+        form.add(cmbMethod);
+
+        form.add(new JLabel("Reference / Notes:"));
+        JTextField txtRef = new JTextField();
+        form.add(txtRef);
+
+        int res = JOptionPane.showConfirmDialog(this, form, "Record Payment for " + sp.getPayableId(), JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (res == JOptionPane.OK_OPTION) {
+            try {
+                BigDecimal amt = new BigDecimal(txtAmount.getText().trim());
+                if (amt.compareTo(BigDecimal.ZERO) <= 0 || amt.compareTo(sp.getBalanceDue()) > 0) {
+                    JOptionPane.showMessageDialog(this, "Payment amount must be between 1 and " + CurrencyUtil.formatPKR(sp.getBalanceDue()), "Invalid Amount", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                String method = (String) cmbMethod.getSelectedItem();
+                String ref = txtRef.getText().trim();
+                payableService.recordPayment(sp.getPayableId(), amt, method, ref, "Settlement", "admin");
+                JOptionPane.showMessageDialog(this, "Payment recorded successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+                refreshPayables();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Payment failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }

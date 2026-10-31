@@ -11,6 +11,8 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 
 /**
  * Professional desktop login modal for authentication and role-based access control.
@@ -30,136 +32,109 @@ public class LoginDialog extends JDialog {
         this.authService = authService;
 
         initComponents();
-        setSize(580, 420);
+        setSize(460, 440);
         setResizable(false);
         setLocationRelativeTo(owner);
+
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowOpened(WindowEvent e) {
+                SwingUtilities.invokeLater(() -> {
+                    txtUsername.requestFocusInWindow();
+                    txtUsername.selectAll();
+                });
+            }
+        });
     }
 
     private void initComponents() {
-        setLayout(new BorderLayout());
+        getContentPane().setBackground(Theme.BG_WINDOW);
+        setLayout(new BorderLayout(0, 0));
 
-        // Header Banner
-        JPanel header = new JPanel(new BorderLayout(10, 4));
-        header.setBackground(UITheme.HEADER_BG);
-        header.setBorder(BorderFactory.createEmptyBorder(18, 24, 18, 24));
+        // 1. Top Section (Centered)
+        JPanel pnlTop = new JPanel();
+        pnlTop.setLayout(new BoxLayout(pnlTop, BoxLayout.Y_AXIS));
+        pnlTop.setBackground(Theme.BG_WINDOW);
+        pnlTop.setBorder(new EmptyBorder(22, 30, 8, 30));
 
-        JLabel lblTitle = new JLabel("ShelfLife Console");
-        lblTitle.setFont(UITheme.FONT_APP_TITLE);
-        lblTitle.setForeground(Color.WHITE);
+        JLabel lblTitle = new JLabel("📦 ShelfLife");
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        lblTitle.setForeground(Theme.ACCENT_PRIMARY);
+        lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel lblSub = new JLabel("Inventory & Point-of-Sale Access");
-        lblSub.setFont(UITheme.FONT_SUBTITLE);
-        lblSub.setForeground(UITheme.TEXT_LIGHT);
+        JLabel lblSubtitle = new JLabel("Inventory & POS Management");
+        lblSubtitle.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        lblSubtitle.setForeground(Theme.TEXT_SECONDARY);
+        lblSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        header.add(lblTitle, BorderLayout.NORTH);
-        header.add(lblSub, BorderLayout.SOUTH);
-        add(header, BorderLayout.NORTH);
+        pnlTop.add(lblTitle);
+        pnlTop.add(Box.createVerticalStrut(4));
+        pnlTop.add(lblSubtitle);
 
-        // Center Form
-        JPanel form = new JPanel(new GridBagLayout());
-        form.setBackground(UITheme.BG_PAGE);
-        form.setBorder(BorderFactory.createEmptyBorder(20, 28, 15, 28));
+        add(pnlTop, BorderLayout.NORTH);
 
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(6, 12, 6, 12);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.gridx = 0;
+        // 2. Center Form (30px horizontal padding)
+        JPanel pnlForm = new JPanel();
+        pnlForm.setLayout(new BoxLayout(pnlForm, BoxLayout.Y_AXIS));
+        pnlForm.setBackground(Theme.BG_WINDOW);
+        pnlForm.setBorder(new EmptyBorder(8, 30, 10, 30));
 
         // Username
-        gbc.gridy = 0;
-        gbc.gridwidth = 1;
-        JLabel lblUser = new JLabel("Username:");
-        lblUser.setFont(UITheme.FONT_BOLD);
-        lblUser.setForeground(UITheme.TEXT_MAIN);
-        form.add(lblUser, gbc);
+        JLabel lblUser = new JLabel("Username");
+        lblUser.setFont(Theme.FONT_BOLD);
+        lblUser.setForeground(Theme.TEXT_PRIMARY);
+        lblUser.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        gbc.gridx = 1;
-        txtUsername = new JTextField(15);
-        UITheme.styleTextField(txtUsername);
-        txtUsername.setText("admin"); // convenient default
-        form.add(txtUsername, gbc);
+        txtUsername = new JTextField("admin");
+        Styles.styleTextField(txtUsername);
+        txtUsername.setPreferredSize(new Dimension(380, 36));
+        txtUsername.setMaximumSize(new Dimension(Short.MAX_VALUE, 36));
+        txtUsername.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // Password
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        JLabel lblPass = new JLabel("Password:");
-        lblPass.setFont(UITheme.FONT_BOLD);
-        lblPass.setForeground(UITheme.TEXT_MAIN);
-        form.add(lblPass, gbc);
+        JLabel lblPass = new JLabel("Password");
+        lblPass.setFont(Theme.FONT_BOLD);
+        lblPass.setForeground(Theme.TEXT_PRIMARY);
+        lblPass.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        gbc.gridx = 1;
-        txtPassword = new JPasswordField(15);
-        UITheme.styleTextField(txtPassword);
-        txtPassword.setText("admin123");
-        form.add(txtPassword, gbc);
+        txtPassword = new JPasswordField("admin123");
+        Styles.styleTextField(txtPassword);
+        txtPassword.setPreferredSize(new Dimension(380, 36));
+        txtPassword.setMaximumSize(new Dimension(Short.MAX_VALUE, 36));
+        txtPassword.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Error message label
-        gbc.gridx = 0;
-        gbc.gridy = 2;
-        gbc.gridwidth = 2;
+        // Error message
         lblError = new JLabel(" ");
-        lblError.setFont(UITheme.FONT_SMALL);
-        lblError.setForeground(UITheme.DANGER);
-        form.add(lblError, gbc);
+        lblError.setFont(Theme.FONT_SMALL);
+        lblError.setForeground(Theme.COLOR_DANGER_FG);
+        lblError.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Quick login shortcut buttons panel
-        gbc.gridy = 3;
-        gbc.gridx = 0;
-        gbc.gridwidth = 2;
-        JPanel pnlQuickFill = new JPanel(new GridLayout(1, 3, 8, 0));
-        pnlQuickFill.setOpaque(false);
-        JLabel lblDemo = new JLabel("Demo Accounts:");
-        lblDemo.setFont(UITheme.FONT_SMALL);
-        lblDemo.setForeground(UITheme.TEXT_MUTED);
-        pnlQuickFill.add(lblDemo);
-
-        JButton btnFillAdmin = Styles.createSecondaryButton("Admin");
-        btnFillAdmin.setFont(Theme.FONT_SMALL);
-        btnFillAdmin.addActionListener(e -> {
-            txtUsername.setText("admin");
-            txtPassword.setText("admin123");
-            lblError.setText(" ");
-        });
-
-        JButton btnFillCashier = Styles.createSecondaryButton("Cashier");
-        btnFillCashier.setFont(Theme.FONT_SMALL);
-        btnFillCashier.addActionListener(e -> {
-            txtUsername.setText("cashier");
-            txtPassword.setText("cashier123");
-            lblError.setText(" ");
-        });
-
-        pnlQuickFill.add(btnFillAdmin);
-        pnlQuickFill.add(btnFillCashier);
-        form.add(pnlQuickFill, gbc);
-
-        add(form, BorderLayout.CENTER);
-
-        // Bottom Actions - Split Left (Sign Up) and Right (Exit / Sign In)
-        JPanel footer = new JPanel(new BorderLayout(10, 0));
-        footer.setBackground(UITheme.BG_PAGE);
-        footer.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Theme.BORDER_LIGHT, 1, true),
-                new EmptyBorder(10, 16, 10, 16)
-        ));
-
-        JButton btnSignUp = Styles.createSecondaryButton("Register New Account");
-        btnSignUp.setToolTipText("Create a new Cashier or Administrator profile");
-        btnSignUp.addActionListener(e -> openSignUpDialog());
-
-        JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        rightActions.setOpaque(false);
-
-        JButton btnExit = Styles.createSecondaryButton("Exit Application");
-        btnExit.addActionListener(e -> {
-            authenticatedUser = null;
-            dispose();
-        });
-
-        btnLogin = Styles.createPrimaryButton("Sign In to Console");
+        // Login Button (full width, 40px height, Theme.BG_SIDEBAR_SELECTED, white bold text)
+        btnLogin = new JButton("Sign In") {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getModel().isPressed() ? Theme.ACCENT_PRIMARY_PRESSED :
+                        (getModel().isRollover() ? Theme.ACCENT_PRIMARY_HOVER : Theme.BG_SIDEBAR_SELECTED));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        btnLogin.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        btnLogin.setForeground(Color.WHITE);
+        btnLogin.setContentAreaFilled(false);
+        btnLogin.setBorderPainted(false);
+        btnLogin.setFocusPainted(false);
+        btnLogin.setOpaque(false);
+        btnLogin.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnLogin.setPreferredSize(new Dimension(380, 40));
+        btnLogin.setMaximumSize(new Dimension(Short.MAX_VALUE, 40));
+        btnLogin.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnLogin.addActionListener(e -> handleLogin());
 
-        // Enter key listener on inputs
+        // Key listener for Enter key
         KeyAdapter enterListener = new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
@@ -171,12 +146,87 @@ public class LoginDialog extends JDialog {
         txtUsername.addKeyListener(enterListener);
         txtPassword.addKeyListener(enterListener);
 
-        rightActions.add(btnExit);
-        rightActions.add(btnLogin);
+        pnlForm.add(lblUser);
+        pnlForm.add(Box.createVerticalStrut(4));
+        pnlForm.add(txtUsername);
+        pnlForm.add(Box.createVerticalStrut(10));
+        pnlForm.add(lblPass);
+        pnlForm.add(Box.createVerticalStrut(4));
+        pnlForm.add(txtPassword);
+        pnlForm.add(Box.createVerticalStrut(4));
+        pnlForm.add(lblError);
+        pnlForm.add(Box.createVerticalStrut(8));
+        pnlForm.add(btnLogin);
 
-        footer.add(btnSignUp, BorderLayout.WEST);
-        footer.add(rightActions, BorderLayout.EAST);
-        add(footer, BorderLayout.SOUTH);
+        add(pnlForm, BorderLayout.CENTER);
+
+        // 3. Bottom Hint & Demo Credentials Panel
+        JPanel pnlBottom = new JPanel();
+        pnlBottom.setLayout(new BoxLayout(pnlBottom, BoxLayout.Y_AXIS));
+        pnlBottom.setBackground(Theme.BG_WINDOW);
+        pnlBottom.setBorder(new CompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BORDER_LIGHT),
+                new EmptyBorder(10, 20, 12, 20)
+        ));
+
+        JPanel pnlHint = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 2));
+        pnlHint.setOpaque(false);
+
+        JLabel lblHint = new JLabel("Demo Accounts:");
+        lblHint.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        lblHint.setForeground(Theme.TEXT_SECONDARY);
+        pnlHint.add(lblHint);
+
+        JButton btnAdminChip = createChipButton("admin / admin123", () -> {
+            txtUsername.setText("admin");
+            txtPassword.setText("admin123");
+            lblError.setText(" ");
+        });
+        JButton btnCashierChip = createChipButton("cashier / cashier123", () -> {
+            txtUsername.setText("cashier");
+            txtPassword.setText("cashier123");
+            lblError.setText(" ");
+        });
+
+        pnlHint.add(btnAdminChip);
+        pnlHint.add(btnCashierChip);
+
+        JPanel pnlSubAction = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 2));
+        pnlSubAction.setOpaque(false);
+
+        JButton btnRegister = new JButton("Register New Account");
+        btnRegister.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        btnRegister.setForeground(Theme.ACCENT_PRIMARY);
+        btnRegister.setBorderPainted(false);
+        btnRegister.setContentAreaFilled(false);
+        btnRegister.setFocusPainted(false);
+        btnRegister.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnRegister.addActionListener(e -> openSignUpDialog());
+
+        pnlSubAction.add(btnRegister);
+
+        pnlBottom.add(pnlHint);
+        pnlBottom.add(Box.createVerticalStrut(2));
+        pnlBottom.add(pnlSubAction);
+
+        add(pnlBottom, BorderLayout.SOUTH);
+
+        getRootPane().setDefaultButton(btnLogin);
+    }
+
+    private JButton createChipButton(String text, Runnable onClick) {
+        JButton btn = new JButton(text);
+        btn.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        btn.setForeground(Theme.TEXT_PRIMARY);
+        btn.setBackground(Color.WHITE);
+        btn.setFocusPainted(false);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btn.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Theme.BORDER_LIGHT, 1, true),
+                new EmptyBorder(3, 8, 3, 8)
+        ));
+        btn.addActionListener(e -> onClick.run());
+        return btn;
     }
 
     private void openSignUpDialog() {
@@ -187,7 +237,7 @@ public class LoginDialog extends JDialog {
         if (created != null) {
             txtUsername.setText(created.getUsername());
             txtPassword.setText("");
-            lblError.setForeground(UITheme.SUCCESS);
+            lblError.setForeground(Theme.COLOR_SUCCESS_FG);
             lblError.setText("Account '" + created.getUsername() + "' registered! Please sign in.");
             txtPassword.requestFocus();
         }
@@ -198,11 +248,13 @@ public class LoginDialog extends JDialog {
         String password = new String(txtPassword.getPassword());
 
         if (username.isEmpty()) {
+            lblError.setForeground(Theme.COLOR_DANGER_FG);
             lblError.setText("Please enter a username.");
             txtUsername.requestFocus();
             return;
         }
         if (password.isEmpty()) {
+            lblError.setForeground(Theme.COLOR_DANGER_FG);
             lblError.setText("Please enter a password.");
             txtPassword.requestFocus();
             return;
@@ -213,6 +265,7 @@ public class LoginDialog extends JDialog {
             this.authenticatedUser = user;
             dispose();
         } catch (Exception ex) {
+            lblError.setForeground(Theme.COLOR_DANGER_FG);
             lblError.setText(ex.getMessage());
             txtPassword.selectAll();
             txtPassword.requestFocus();

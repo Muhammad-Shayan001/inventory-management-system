@@ -317,6 +317,10 @@ public class SplitPaymentDialog extends JDialog {
         return resultPayments;
     }
 
+    public List<PaymentLine> getAllocatedPayments() {
+        return resultPayments;
+    }
+
     public BigDecimal getConfirmedCashTendered() {
         return confirmedCashTendered;
     }

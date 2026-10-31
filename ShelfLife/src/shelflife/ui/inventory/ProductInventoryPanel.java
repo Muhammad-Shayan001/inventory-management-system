@@ -18,6 +18,9 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import shelflife.util.BarcodeSheetPrinter;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 
@@ -96,7 +99,8 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
                 createProductSection(),
                 createBatchSection());
-        splitPane.setResizeWeight(0.52);
+        splitPane.setResizeWeight(0.6);
+        splitPane.setDividerLocation(0.6);
         splitPane.setContinuousLayout(true);
         splitPane.setBorder(null);
 
@@ -151,8 +155,29 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
         searchPanel.add(btnSearch);
         searchPanel.add(btnClearSearch);
 
+        // Header utility action buttons in FlowLayout(RIGHT)
+        JPanel pnlHeaderActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        pnlHeaderActions.setOpaque(false);
+
+        JButton btnPrintBarcodes = Styles.createSecondaryButton("Print Barcodes");
+        btnPrintBarcodes.addActionListener(e -> BarcodeSheetPrinter.printLabels(this, inventoryService.getAllProducts()));
+        pnlHeaderActions.add(btnPrintBarcodes);
+
+        JButton btnExportCsv = Styles.createSecondaryButton("Export CSV");
+        btnExportCsv.addActionListener(e -> exportProductsCsv());
+        pnlHeaderActions.add(btnExportCsv);
+
+        JButton btnImportCsv = Styles.createSecondaryButton("Import CSV");
+        btnImportCsv.addActionListener(e -> importProductsCsv());
+        pnlHeaderActions.add(btnImportCsv);
+
+        JPanel pnlRightHeader = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        pnlRightHeader.setOpaque(false);
+        pnlRightHeader.add(searchPanel);
+        pnlRightHeader.add(pnlHeaderActions);
+
         headerPanel.add(titlePanel, BorderLayout.WEST);
-        headerPanel.add(searchPanel, BorderLayout.EAST);
+        headerPanel.add(pnlRightHeader, BorderLayout.EAST);
         headerPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER_LIGHT),
                 new EmptyBorder(0, 0, 10, 0)
@@ -186,7 +211,7 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
         tblProducts.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         Styles.styleTable(tblProducts);
 
-        int[] prodWidths = {75, 130, 95, 85, 80, 55, 80};
+        int[] prodWidths = {80, 150, 100, 90, 80, 60, 90};
         for (int i = 0; i < prodWidths.length && i < tblProducts.getColumnCount(); i++) {
             tblProducts.getColumnModel().getColumn(i).setPreferredWidth(prodWidths[i]);
         }
@@ -267,21 +292,21 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
         fieldsPanel.setOpaque(false);
 
         JLabel lblPId = new JLabel("Product ID:");
-        lblPId.setFont(Theme.FONT_REGULAR);
+        lblPId.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblPId);
         txtProdId = new JTextField();
         Styles.styleTextField(txtProdId);
         fieldsPanel.add(txtProdId);
 
         JLabel lblPName = new JLabel("Product Name:");
-        lblPName.setFont(Theme.FONT_REGULAR);
+        lblPName.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblPName);
         txtProdName = new JTextField();
         Styles.styleTextField(txtProdName);
         fieldsPanel.add(txtProdName);
 
         JLabel lblPCat = new JLabel("Category:");
-        lblPCat.setFont(Theme.FONT_REGULAR);
+        lblPCat.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblPCat);
         String[] defaultCategories = {"Dairy", "Bakery", "Produce", "Beverages", "Meat & Seafood", "Canned Goods", "Snacks", "Other"};
         cmbProdCategory = new JComboBox<>(defaultCategories);
@@ -290,14 +315,14 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
         fieldsPanel.add(cmbProdCategory);
 
         JLabel lblPPrice = new JLabel("Selling Price (Rs.):");
-        lblPPrice.setFont(Theme.FONT_REGULAR);
+        lblPPrice.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblPPrice);
         txtProdPrice = new JTextField();
         Styles.styleTextField(txtProdPrice);
         fieldsPanel.add(txtProdPrice);
 
         JLabel lblPThresh = new JLabel("Low Stock Threshold:");
-        lblPThresh.setFont(Theme.FONT_REGULAR);
+        lblPThresh.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblPThresh);
         txtProdThreshold = new JTextField();
         Styles.styleTextField(txtProdThreshold);
@@ -358,7 +383,7 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
         tblBatches.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         Styles.styleTable(tblBatches);
 
-        int[] batchWidths = {80, 90, 75, 95, 105};
+        int[] batchWidths = {90, 90, 70, 100, 110};
         for (int i = 0; i < batchWidths.length && i < tblBatches.getColumnCount(); i++) {
             tblBatches.getColumnModel().getColumn(i).setPreferredWidth(batchWidths[i]);
         }
@@ -445,28 +470,28 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
         fieldsPanel.setOpaque(false);
 
         JLabel lblBId = new JLabel("Batch ID:");
-        lblBId.setFont(Theme.FONT_REGULAR);
+        lblBId.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblBId);
         txtBatchId = new JTextField();
         Styles.styleTextField(txtBatchId);
         fieldsPanel.add(txtBatchId);
 
         JLabel lblBPId = new JLabel("Product ID:");
-        lblBPId.setFont(Theme.FONT_REGULAR);
+        lblBPId.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblBPId);
         txtBatchProdId = new JTextField();
         Styles.styleTextField(txtBatchProdId);
         fieldsPanel.add(txtBatchProdId);
 
         JLabel lblBQty = new JLabel("Quantity:");
-        lblBQty.setFont(Theme.FONT_REGULAR);
+        lblBQty.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblBQty);
         txtBatchQuantity = new JTextField();
         Styles.styleTextField(txtBatchQuantity);
         fieldsPanel.add(txtBatchQuantity);
 
         JLabel lblBExp = new JLabel("Expiry Date (YYYY-MM-DD):");
-        lblBExp.setFont(Theme.FONT_REGULAR);
+        lblBExp.setFont(Theme.FONT_BOLD);
         fieldsPanel.add(lblBExp);
         txtBatchExpiryDate = new JTextField();
         Styles.styleTextField(txtBatchExpiryDate);
@@ -988,5 +1013,96 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
             btnDeleteBatch.setEnabled(canManage);
             btnDeleteBatch.setToolTipText(canManage ? "Delete batch" : "Requires Administrator role");
         }
+    }
+
+    private void exportProductsCsv() {
+        JFileChooser fc = new JFileChooser();
+        fc.setSelectedFile(new File("products_export.csv"));
+        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File f = fc.getSelectedFile();
+            try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(f), StandardCharsets.UTF_8))) {
+                pw.write('\uFEFF'); // UTF-8 BOM
+                pw.println("productId,name,category,sellingPrice,lowStockThreshold,active,barcode,sku");
+                for (Product p : inventoryService.getAllProducts()) {
+                    pw.println(String.format("\"%s\",\"%s\",\"%s\",%s,%d,%b,\"%s\",\"%s\"",
+                            escapeCsv(p.getProductId()),
+                            escapeCsv(p.getName()),
+                            escapeCsv(p.getCategory()),
+                            p.getSellingPrice().toPlainString(),
+                            p.getLowStockThreshold(),
+                            p.isActive(),
+                            escapeCsv(p.getBarcode()),
+                            escapeCsv(p.getSku())));
+                }
+                JOptionPane.showMessageDialog(this, "Products exported successfully to:\n" + f.getAbsolutePath(), "Export Complete", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Export failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private void importProductsCsv() {
+        JFileChooser fc = new JFileChooser();
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File f = fc.getSelectedFile();
+            int imported = 0;
+            int errors = 0;
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
+                String line = br.readLine(); // header
+                while ((line = br.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    String[] parts = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
+                    if (parts.length >= 5) {
+                        try {
+                            String pId = cleanCsvCell(parts[0]);
+                            String pName = cleanCsvCell(parts[1]);
+                            String pCat = cleanCsvCell(parts[2]);
+                            BigDecimal price = new BigDecimal(cleanCsvCell(parts[3]));
+                            int threshold = Integer.parseInt(cleanCsvCell(parts[4]));
+                            boolean active = parts.length > 5 ? Boolean.parseBoolean(cleanCsvCell(parts[5])) : true;
+                            String barcode = parts.length > 6 ? cleanCsvCell(parts[6]) : "";
+                            String sku = parts.length > 7 ? cleanCsvCell(parts[7]) : "";
+
+                            Product existing = inventoryService.getProductById(pId);
+                            if (existing == null) {
+                                Product np = new Product(pId, pName, pCat, price, threshold, barcode, sku, active);
+                                inventoryService.addProduct(np);
+                            } else {
+                                existing.setName(pName);
+                                existing.setCategory(pCat);
+                                existing.setSellingPrice(price);
+                                existing.setLowStockThreshold(threshold);
+                                existing.setActive(active);
+                                existing.setBarcode(barcode);
+                                existing.setSku(sku);
+                                inventoryService.updateProduct(existing);
+                            }
+                            imported++;
+                        } catch (Exception rowEx) {
+                            errors++;
+                        }
+                    }
+                }
+                refreshData();
+                JOptionPane.showMessageDialog(this, String.format("CSV Import finished: %d products processed, %d errors/skipped.", imported, errors), "Import Complete", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "CSV Import failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private String escapeCsv(String val) {
+        if (val == null) return "";
+        return val.replace("\"", "\"\"");
+    }
+
+    private String cleanCsvCell(String val) {
+        if (val == null) return "";
+        val = val.trim();
+        if (val.startsWith("\"") && val.endsWith("\"") && val.length() >= 2) {
+            val = val.substring(1, val.length() - 1).replace("\"\"", "\"");
+        }
+        return val.trim();
     }
 }

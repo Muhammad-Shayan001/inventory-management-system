@@ -122,7 +122,7 @@ public final class Styles {
                 fg = Color.WHITE;
                 border = bg;
             } else if (type == ButtonType.DANGER) {
-                bg = isPressed ? new Color(153, 27, 27) : (isHovered ? new Color(185, 28, 28) : new Color(254, 226, 226));
+                bg = isPressed ? new Color(153, 27, 27) : (isHovered ? new Color(185, 28, 28) : new Color(220, 38, 38));
                 fg = Color.WHITE;
                 border = bg;
             } else if (type == ButtonType.SUCCESS) {
@@ -130,9 +130,9 @@ public final class Styles {
                 fg = Color.WHITE;
                 border = bg;
             } else { // SECONDARY
-                bg = isPressed ? new Color(243, 244, 246) : (isHovered ? new Color(249, 250, 251) : Color.WHITE);
+                bg = isPressed ? new Color(226, 232, 240) : (isHovered ? new Color(241, 245, 249) : Color.WHITE);
                 fg = Theme.TEXT_PRIMARY;
-                border = isHovered ? Theme.ACCENT_PRIMARY : Theme.BORDER_LIGHT;
+                border = isHovered ? Theme.ACCENT_PRIMARY : new Color(203, 213, 225);
             }
 
             // Fill rounded background

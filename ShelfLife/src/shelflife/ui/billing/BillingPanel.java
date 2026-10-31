@@ -395,6 +395,12 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
 
         tblCart = new JTable(cartTableModel);
         UITheme.styleTable(tblCart);
+        tblCart.getColumnModel().getColumn(0).setPreferredWidth(90);
+        tblCart.getColumnModel().getColumn(1).setPreferredWidth(200);
+        tblCart.getColumnModel().getColumn(2).setPreferredWidth(60);
+        tblCart.getColumnModel().getColumn(3).setPreferredWidth(100);
+        tblCart.getColumnModel().getColumn(4).setPreferredWidth(100);
+
         tblCart.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) syncSelectionWithForm();
         });
@@ -409,12 +415,13 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         panel.add(scrollCart, BorderLayout.CENTER);
 
         // Bottom Summary & Actions
-        JPanel pnlBottom = new JPanel(new BorderLayout(8, 8));
+        JPanel pnlBottom = new JPanel();
+        pnlBottom.setLayout(new BoxLayout(pnlBottom, BoxLayout.Y_AXIS));
         pnlBottom.setOpaque(false);
         pnlBottom.setBorder(new EmptyBorder(8, 10, 8, 10));
 
-        // Financial Summary Matrix
-        JPanel pnlTotals = new JPanel(new GridLayout(2, 4, 12, 6));
+        // Financial Summary Matrix (Row 1: Subtotal, Row 2: Tax / GST, Row 3: Grand Total)
+        JPanel pnlTotals = new JPanel(new GridLayout(3, 2, 12, 8));
         pnlTotals.setOpaque(false);
 
         pnlTotals.add(new JLabel("Subtotal:"));
@@ -422,16 +429,11 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         lblSubtotalVal.setFont(UITheme.FONT_BOLD);
         pnlTotals.add(lblSubtotalVal);
 
-        pnlTotals.add(new JLabel("Cash Received:"));
-        txtCashReceived = new JTextField("0.00");
-        txtCashReceived.setHorizontalAlignment(JTextField.RIGHT);
-        txtCashReceived.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        txtCashReceived.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { updateChangeDue(); }
-            @Override public void removeUpdate(DocumentEvent e) { updateChangeDue(); }
-            @Override public void changedUpdate(DocumentEvent e) { updateChangeDue(); }
-        });
-        pnlTotals.add(txtCashReceived);
+        pnlTotals.add(new JLabel("Tax / GST:"));
+        lblTaxVal = new JLabel("Rs. 0.00", SwingConstants.RIGHT);
+        lblTaxVal.setFont(UITheme.FONT_BOLD);
+        lblTaxVal.setForeground(UITheme.TEXT_MUTED);
+        pnlTotals.add(lblTaxVal);
 
         pnlTotals.add(new JLabel("GRAND TOTAL:"));
         lblFinalTotalVal = new JLabel("Rs. 0.00", SwingConstants.RIGHT);
@@ -439,57 +441,103 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         lblFinalTotalVal.setForeground(UITheme.SUCCESS);
         pnlTotals.add(lblFinalTotalVal);
 
-        pnlTotals.add(new JLabel("Change Due:"));
+        // Cash Tendered & Change Due row
+        JPanel pnlCashRow = new JPanel(new GridLayout(1, 4, 12, 0));
+        pnlCashRow.setOpaque(false);
+
+        JLabel lblCashTendered = new JLabel("Cash Tendered:");
+        lblCashTendered.setFont(UITheme.FONT_BOLD);
+        pnlCashRow.add(lblCashTendered);
+
+        txtCashReceived = new JTextField();
+        txtCashReceived.setToolTipText("Enter cash received");
+        txtCashReceived.setHorizontalAlignment(JTextField.RIGHT);
+        txtCashReceived.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        txtCashReceived.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { updateChangeDue(); }
+            @Override public void removeUpdate(DocumentEvent e) { updateChangeDue(); }
+            @Override public void changedUpdate(DocumentEvent e) { updateChangeDue(); }
+        });
+        pnlCashRow.add(txtCashReceived);
+
+        JLabel lblChangeLabel = new JLabel("Change Due:");
+        lblChangeLabel.setFont(UITheme.FONT_BOLD);
+        pnlCashRow.add(lblChangeLabel);
+
         lblChangeDueVal = new JLabel("Rs. 0.00", SwingConstants.RIGHT);
         lblChangeDueVal.setFont(new Font("Segoe UI", Font.BOLD, 15));
         lblChangeDueVal.setForeground(new Color(0x059669));
-        pnlTotals.add(lblChangeDueVal);
+        pnlCashRow.add(lblChangeDueVal);
 
-        // Actions Toolbar
-        JPanel pnlActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 6));
+        // Actions Toolbar (BoxLayout Y_AXIS: Top row secondary, Bottom row primary)
+        JPanel pnlActions = new JPanel();
+        pnlActions.setLayout(new BoxLayout(pnlActions, BoxLayout.Y_AXIS));
         pnlActions.setOpaque(false);
 
-        JLabel lblPayLabel = new JLabel("Method:");
-        lblPayLabel.setFont(UITheme.FONT_BOLD);
-        pnlActions.add(lblPayLabel);
-
-        cmbPaymentMethod = new JComboBox<>(PaymentMethod.values());
-        cmbPaymentMethod.setFont(UITheme.FONT_REGULAR);
-        pnlActions.add(cmbPaymentMethod);
-
-        btnSplitPayment = UITheme.createSecondaryButton("Split Payment");
-        btnSplitPayment.addActionListener(e -> handleSplitPayment());
-        pnlActions.add(btnSplitPayment);
-
-        btnKhata = UITheme.createSecondaryButton("Customer Khata");
-        btnKhata.addActionListener(e -> handleOpenKhata());
-        pnlActions.add(btnKhata);
+        JPanel pnlSecondaryRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        pnlSecondaryRow.setOpaque(false);
 
         btnHoldBill = UITheme.createSecondaryButton("Hold Bill");
         btnHoldBill.addActionListener(e -> handleHoldBill());
-        pnlActions.add(btnHoldBill);
+        pnlSecondaryRow.add(btnHoldBill);
 
         btnResumeBills = UITheme.createSecondaryButton("Resume Bills");
         btnResumeBills.addActionListener(e -> handleResumeBills());
-        pnlActions.add(btnResumeBills);
+        pnlSecondaryRow.add(btnResumeBills);
 
-        btnCheckout = UITheme.createPrimaryButton("Checkout & Commit Sale");
-        btnCheckout.addActionListener(e -> handleCheckout());
-        pnlActions.add(btnCheckout);
+        btnSplitPayment = UITheme.createSecondaryButton("Split Payment");
+        btnSplitPayment.addActionListener(e -> handleSplitPayment());
+        pnlSecondaryRow.add(btnSplitPayment);
+
+        btnKhata = UITheme.createSecondaryButton("Customer Khata");
+        btnKhata.addActionListener(e -> handleOpenKhata());
+        pnlSecondaryRow.add(btnKhata);
 
         btnSalesHistory = UITheme.createSecondaryButton("Sales History");
         btnSalesHistory.addActionListener(e -> openSalesHistory());
-        pnlActions.add(btnSalesHistory);
+        pnlSecondaryRow.add(btnSalesHistory);
 
         btnRefresh = UITheme.createSecondaryButton("Refresh");
         btnRefresh.addActionListener(e -> refreshData());
-        pnlActions.add(btnRefresh);
+        pnlSecondaryRow.add(btnRefresh);
 
-        pnlBottom.add(pnlTotals, BorderLayout.NORTH);
-        pnlBottom.add(pnlActions, BorderLayout.SOUTH);
+        JPanel pnlPrimaryRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 4));
+        pnlPrimaryRow.setOpaque(false);
+
+        JLabel lblPayLabel = new JLabel("Payment:");
+        lblPayLabel.setFont(UITheme.FONT_BOLD);
+        pnlPrimaryRow.add(lblPayLabel);
+
+        cmbPaymentMethod = new JComboBox<>(PaymentMethod.values());
+        cmbPaymentMethod.setFont(UITheme.FONT_REGULAR);
+        pnlPrimaryRow.add(cmbPaymentMethod);
+
+        btnCheckout = UITheme.createPrimaryButton("Checkout & Commit Sale");
+        btnCheckout.setPreferredSize(new Dimension(200, 40));
+        btnCheckout.addActionListener(e -> handleCheckout());
+        pnlPrimaryRow.add(btnCheckout);
+
+        pnlActions.add(pnlSecondaryRow);
+        pnlActions.add(pnlPrimaryRow);
+
+        pnlBottom.add(pnlTotals);
+        pnlBottom.add(Box.createVerticalStrut(8));
+        pnlBottom.add(pnlCashRow);
+        pnlBottom.add(Box.createVerticalStrut(8));
+        pnlBottom.add(pnlActions);
 
         panel.add(pnlBottom, BorderLayout.SOUTH);
         return panel;
+    }
+
+    private BigDecimal calculateGrandTotal() {
+        BigDecimal subtotal = calculateSubtotal();
+        BigDecimal taxRate = BigDecimal.ZERO;
+        if (settingsService != null) {
+            try { taxRate = settingsService.getSettings().getTaxRate(); } catch (Exception ignored) {}
+        }
+        BigDecimal tax = subtotal.multiply(taxRate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        return subtotal.add(tax).setScale(2, RoundingMode.HALF_UP);
     }
 
     private void updateChangeDue() {
@@ -497,7 +545,7 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         try {
             String text = txtCashReceived.getText().trim();
             BigDecimal received = !text.isEmpty() ? new BigDecimal(text) : BigDecimal.ZERO;
-            BigDecimal grandTotal = calculateSubtotal();
+            BigDecimal grandTotal = calculateGrandTotal();
             BigDecimal change = received.subtract(grandTotal);
 
             if (change.compareTo(BigDecimal.ZERO) >= 0) {
@@ -901,7 +949,7 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         PaymentMethod selectedMethod = (PaymentMethod) cmbPaymentMethod.getSelectedItem();
         if (selectedMethod == null) selectedMethod = PaymentMethod.CASH;
 
-        BigDecimal finalTotal = calculateSubtotal();
+        BigDecimal finalTotal = calculateGrandTotal();
 
         String confirmMsg = String.format(
                 "Confirm Checkout & Commit Sale?\n\n" +
@@ -934,9 +982,13 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
 
             // Record cash sales on active cashier shift
             if (cashierShiftService != null && committedSale != null) {
-                CashierShift active = cashierShiftService.getActiveShiftForCashier(currentCashier);
-                if (active != null) {
-                    cashierShiftService.recordCashSale(active.getShiftId(), committedSale.getTotalAmount());
+                try {
+                    CashierShift active = cashierShiftService.getActiveShiftForCashier(currentCashier);
+                    if (active != null) {
+                        cashierShiftService.recordCashSale(active.getShiftId(), committedSale.getTotalAmount());
+                    }
+                } catch (Exception shiftEx) {
+                    System.err.println("Warning: Failed to record shift cash sale: " + shiftEx.getMessage());
                 }
             }
 
@@ -982,10 +1034,15 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
 
     private void updateSummaryTotals() {
         BigDecimal subtotal = calculateSubtotal();
-        BigDecimal tax = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal taxRate = BigDecimal.ZERO;
+        if (settingsService != null) {
+            try { taxRate = settingsService.getSettings().getTaxRate(); } catch (Exception ignored) {}
+        }
+        BigDecimal tax = subtotal.multiply(taxRate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
         BigDecimal grandTotal = subtotal.add(tax).setScale(2, RoundingMode.HALF_UP);
 
         lblSubtotalVal.setText(CurrencyUtil.format(subtotal));
+        if (lblTaxVal != null) lblTaxVal.setText(CurrencyUtil.format(tax));
         lblFinalTotalVal.setText(CurrencyUtil.format(grandTotal));
         updateChangeDue();
     }
