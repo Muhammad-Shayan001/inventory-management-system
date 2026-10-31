@@ -1,0 +1,3 @@
+userId,username,passwordHash,salt,role,fullName,active,mustChangePassword
+USER-01,admin,5b675df078e215bb743360c4c89dd0f1de251b7d843f6b3b3fadb8d761d50a5a,c42cb0621a05ad8f8b6097842b2f14b6,ADMIN,System Administrator,true,false
+USER-02,cashier,a99355f285aae31d71b17f85e2a275ca936a29554fdc8305a52c1bc6eeac2143,7fb44328c59cf0a133650a6df490e048,CASHIER,Primary Cashier,true,false

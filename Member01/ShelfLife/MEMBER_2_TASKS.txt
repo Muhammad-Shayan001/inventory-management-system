@@ -1,0 +1,44 @@
+MASTER PROMPT — SHELFLIFE MEMBER 2: EXPIRY, FEFO & STOCK ALERTS
+
+Act as a senior Java Swing developer, inventory-management specialist, and OOP instructor. I am Member 2 of a five-member university project named ShelfLife. Implement ONLY the Expiry, FEFO and Stock Alerts module. Produce complete source code, tests and integration instructions.
+
+TECHNOLOGY
+Java 8-compatible syntax, Java Swing, Apache NetBeans, LocalDate for expiry dates, and the shared local CSV/service architecture. Avoid external libraries and online services.
+
+REQUIRED FUNCTIONALITY
+1. Create ExpiryAlertsPanel.java in package shelflife.ui.expiry.
+2. Display expired batches, batches approaching expiry, and low-stock warnings.
+3. Allow the user to configure the near-expiry warning period, with a sensible default.
+4. Display product name, product ID, batch ID, remaining quantity, expiry date, and alert type.
+5. Recommend eligible batches using FEFO (First-Expiring, First-Out): ascending expiry date, with batch ID as a stable tie-breaker.
+6. Exclude expired batches and batches with zero quantity from ordinary sale recommendations.
+7. Let the user record expired or damaged stock as wastage, with quantity and reason.
+8. Update batch stock and save wastage through the approved shared service/transaction mechanism.
+9. Refresh alerts after inventory changes and show understandable errors.
+10. Do not maintain a separate inventory or write directly to CSV files from GUI handlers.
+
+SHARED ARCHITECTURE
+Use shelflife.model.Product, ProductBatch and WastageRecord, along with the approved InventoryService and ExpiryService contracts. Required panel constructor: ExpiryAlertsPanel(InventoryService inventoryService, ExpiryService expiryService). Include public void refreshData(). Do not duplicate models, storage classes, or services.
+
+BUSINESS RULES
+- A batch is expired when expiryDate.isBefore(today). A batch expiring today is not considered expired under the project's agreed rule.
+- Near-expiry logic must follow one documented inclusive date-window rule consistently.
+- Low-stock calculations use the product threshold and the agreed stock definition. Avoid duplicate warnings for one product.
+- FEFO ordering applies only to eligible, non-expired batches with positive quantity.
+- Wastage quantity must be positive and cannot exceed the batch's remaining quantity.
+- Wastage history and stock reduction must be committed consistently. If saving fails, report the failure and do not silently leave inconsistent records.
+
+CONTRACT REQUIREMENT
+Before coding, ask me for the approved shared model and service files if they are not supplied. Follow their exact public method signatures. Do not invent new versions of InventoryService, ExpiryService, Product, ProductBatch, or FileManager. If an API required by the module is missing, list the missing method and request a coordinated contract update instead of silently changing the architecture.
+
+DELIVERABLES
+1. Module design and dependencies.
+2. Complete source code for every new file, with package declarations and exact project paths.
+3. Explanation of expiry, near-expiry, low-stock, FEFO and wastage logic.
+4. NetBeans compile/run instructions.
+5. Test cases for expired batches, expiry today, configurable warning period, FEFO ordering, low stock, invalid wastage quantity, and storage failure.
+6. Integration instructions for Member 5.
+7. File list and known limitations.
+
+QUALITY RULES
+No pseudocode, placeholder methods, unexplained ellipses, or missing files. Keep code understandable to university students. Do not implement billing, product CRUD, or the full application. Do not claim tests passed unless actually executed. Deliver only the assigned module and preserve compatibility with the other members.

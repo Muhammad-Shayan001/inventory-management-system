@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ShelfLife_Member3" default="default" basedir=".">
+    <description>ShelfLife POS &amp; Billing - Member 3 NetBeans Project Build Script</description>
+    <import file="nbproject/build-impl.xml" optional="true"/>
+    
+    <target name="default" depends="compile"/>
+
+    <target name="init">
+        <mkdir dir="build/classes"/>
+        <mkdir dir="dist"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="src" destdir="build/classes" source="1.8" target="1.8" includeantruntime="false">
+            <classpath>
+                <pathelement location="build/classes"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="run" depends="compile">
+        <java classname="shelflife.example.BillingDemo" fork="true">
+            <classpath>
+                <pathelement location="build/classes"/>
+            </classpath>
+        </java>
+    </target>
+
+    <target name="test" depends="compile">
+        <mkdir dir="build/test/classes"/>
+        <javac srcdir="test" destdir="build/test/classes" source="1.8" target="1.8" includeantruntime="false">
+            <classpath>
+                <pathelement location="build/classes"/>
+            </classpath>
+        </javac>
+        <java classname="shelflife.test.BillingAndSalesTest" fork="true">
+            <classpath>
+                <pathelement location="build/classes"/>
+                <pathelement location="build/test/classes"/>
+            </classpath>
+        </java>
+    </target>
+
+    <target name="clean">
+        <delete dir="build"/>
+        <delete dir="dist"/>
+    </target>
+</project>

@@ -1,0 +1,51 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "1. Compile Project (javac)",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "New-Item -ItemType Directory -Path 'build\\classes' -Force | Out-Null; $files = Get-ChildItem -Path 'src','test' -Filter '*.java' -Recurse | ForEach-Object { $_.FullName }; javac -d 'build\\classes' -encoding UTF-8 $files; Write-Host 'Compilation successful! Classes written to build/classes' -ForegroundColor Green"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "2. Run Automated Test Suite (8 Test Cases)",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "java -cp 'build\\classes' shelflife.test.BillingAndSalesTest"
+            ],
+            "dependsOn": "1. Compile Project (javac)",
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "3. Launch ShelfLife POS Swing App",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "java -cp 'build\\classes' shelflife.ui.billing.BillingAppDemo"
+            ],
+            "dependsOn": "1. Compile Project (javac)",
+            "problemMatcher": []
+        }
+    ]
+}

@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Launch ShelfLife POS (GUI Demo)",
+            "request": "launch",
+            "mainClass": "shelflife.ui.billing.BillingAppDemo",
+            "projectName": "shelflife"
+        },
+        {
+            "type": "java",
+            "name": "Run Automated Tests (8 Test Cases)",
+            "request": "launch",
+            "mainClass": "shelflife.test.BillingAndSalesTest",
+            "projectName": "shelflife"
+        }
+    ]
+}

@@ -1,0 +1,6 @@
+productId,name,category,sellingPrice,lowStockThreshold
+P101,Organic Whole Milk 1L,Dairy,3.50,5
+P102,Artisan Sourdough Loaf,Bakery,4.75,3
+P103,Farm Fresh Large Eggs (12pk),Dairy,5.20,4
+P104,Greek Vanilla Yogurt 500g,Dairy,2.99,2
+P105,Extra Virgin Olive Oil 750ml,Pantry,12.50,10

@@ -1,0 +1,6 @@
+productId,name,category,sellingPrice,lowStockThreshold
+P101,Fresh Whole Milk 1L,Dairy,65.00,10
+P102,Whole Wheat Farm Bread,Bakery,45.00,5
+P103,Greek Style Yogurt 500g,Dairy,120.00,5
+P104,Organic Brown Eggs 12pk,Poultry,185.00,8
+P105,Skipjack Tuna Flakes 180g,Pantry,210.00,15

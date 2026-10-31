@@ -1,0 +1,3 @@
+saleId,productId,batchId,quantity,unitPrice,lineTotal
+S1001,P101,B001,2,250.00,500.00
+S1002,P102,B003,1,120.00,120.00

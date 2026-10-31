@@ -1,0 +1,47 @@
+MASTER PROMPT — SHELFLIFE MEMBER 3: BILLING & SALES MANAGEMENT
+
+Act as a senior Java developer, billing-system architect, and OOP instructor. I am Member 3 of a five-member university project named ShelfLife. Implement ONLY the Billing and Sales module with complete Java Swing source code, tests, and integration instructions.
+
+TECHNOLOGY
+Java 8-compatible syntax, Swing, Apache NetBeans, BigDecimal for monetary calculations, LocalDateTime for sales timestamps, and shared local CSV storage. No online payment gateway or unnecessary libraries.
+
+REQUIRED FUNCTIONALITY
+1. Create BillingPanel.java in package shelflife.ui.billing.
+2. Allow the user to select products and quantities and add/remove items from a temporary cart.
+3. Display product name, quantity, unit price, line total, subtotal and final total.
+4. Validate quantities and calculate money using BigDecimal, never double for financial totals.
+5. Prevent sales that exceed available sellable stock.
+6. Exclude expired batches from ordinary sales.
+7. Allocate requested quantities across eligible batches using FEFO, in ascending expiry-date order.
+8. Create a unique sale ID and record sale date/time, sale items, batch allocations, unit prices, totals, payment method and payment status.
+9. Ask for confirmation before committing a sale.
+10. Display a receipt and provide access to saved sales history.
+11. Prevent duplicate stock deductions and ensure a cancelled cart never changes inventory.
+12. If persistence fails, show an error and rely on the shared transaction/recovery mechanism. Never silently leave stock and sales records inconsistent.
+
+SHARED ARCHITECTURE
+Use shelflife.model.Sale, SaleItem, Product and ProductBatch; the approved InventoryService, SalesService and DataStore contracts; and the team's shared transaction method. Required constructor: BillingPanel(InventoryService inventoryService, SalesService salesService). Include public void refreshData(). Do not create another Product, ProductBatch, Sale, SaleItem, FileManager, or independent inventory list.
+
+BUSINESS RULES
+- SalesService, not the GUI, owns final stock validation, FEFO allocation, and committing the sale.
+- Revalidate stock at confirmation time; the cart's displayed quantities are not a guarantee of current stock.
+- A SaleItem must identify the batch from which the units were allocated.
+- When one product is allocated across several batches, save separate SaleItem records for those batch allocations.
+- Store the actual unit price charged so historical receipts remain correct after the current product price changes.
+- Payment method/status are records only; do not collect card numbers or process real card payments.
+- Cancelled or failed attempts must not be stored as completed sales.
+
+CONTRACT REQUIREMENT
+Ask for the team's approved shared classes and service interfaces before coding if they are not supplied. Follow all method signatures exactly. Do not implement a competing SalesService or invent a different commitSale API. If the agreed contract lacks a required method, identify the missing method and request a coordinated change from Member 5.
+
+DELIVERABLES
+1. Module design and dependency list.
+2. Complete source code for every new file with exact package names and file paths.
+3. Explanation of cart calculation, FEFO allocation handoff, checkout confirmation, and receipt generation.
+4. NetBeans setup and compile instructions.
+5. Test cases for successful sale, multiple-batch allocation, insufficient stock, expired stock, cancellation, rounding, repeated confirmation and failed storage commit.
+6. Sample receipt output.
+7. Integration instructions for Member 5.
+
+QUALITY RULES
+No pseudocode, placeholder methods, unexplained ellipses, or omitted source files. Do not write CSV files directly in Swing event handlers. Keep the implementation beginner-friendly. Do not claim compilation or test success unless actually verified. Implement only Billing and Sales and preserve the shared architecture.

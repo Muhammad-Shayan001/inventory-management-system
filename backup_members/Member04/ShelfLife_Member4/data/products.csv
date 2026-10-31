@@ -1,0 +1,4 @@
+productId,name,category,sellingPrice,lowStockThreshold
+P101,Fresh Milk 1L,Dairy,250.00,10
+P102,Whole Wheat Bread,Bakery,120.00,15
+P103,Cheddar Cheese 200g,Dairy,450.00,5

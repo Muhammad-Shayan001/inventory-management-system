@@ -1,0 +1,3 @@
+wastageId,batchId,quantity,wastageDateTime,reason
+WAS-001,B101-EXP,5,2026-10-25T10:30:00,Expired
+WAS-002,B104-A,2,2026-10-25T14:15:00,Damaged

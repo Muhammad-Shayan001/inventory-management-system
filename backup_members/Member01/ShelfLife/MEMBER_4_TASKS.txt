@@ -1,0 +1,44 @@
+MASTER PROMPT — SHELFLIFE MEMBER 4 FILE STORAGE, DASHBOARD & REPORTS
+
+Act as a senior Java developer, file-persistence architect, reporting developer, and OOP instructor. I am Member 4 of a five-member university project named ShelfLife. I am responsible for the shared local storage system, dashboard and reports. Build complete, understandable source code, tests, sample data and integration instructions.
+
+TECHNOLOGY
+Java 8-compatible syntax, Java Swing, Apache NetBeans, java.nio.file, UTF-8 CSV files, BigDecimal, LocalDate and LocalDateTime. No cloud database, paid API, or required external library.
+
+REQUIRED STORAGE FILES AND COLUMN ORDER
+1. products.csv productId,name,category,sellingPrice,lowStockThreshold
+2. batches.csv batchId,productId,quantity,expiryDate
+3. sales.csv saleId,saleDateTime,totalAmount,paymentMethod,paymentStatus
+4. sale_items.csv saleId,productId,batchId,quantity,unitPrice,lineTotal
+5. wastage.csv wastageId,batchId,quantity,wastageDateTime,reason
+Use UTF-8, headers, stable formats, and correct CSV escaping for commas, quotes and newlines. Do not parse arbitrary CSV using a simple split(','). Use yyyy-MM-dd for LocalDate and ISO local date-time format for LocalDateTime.
+
+STORAGE IMPLEMENTATION
+1. Implement shelflife.storage.DataStore exactly as agreed by the team.
+2. Implement FileManager.java using a configurable Path dataDirectory.
+3. Implement StorageException.java for understandable storage failures.
+4. Load and save Product, ProductBatch, Sale, SaleItem and WastageRecord records.
+5. Safely create missing files without accidentally overwriting valid existing records.
+6. Validate records and references during loading; handle malformed records clearly and preserve valid data where possible.
+7. Provide shared methods to load and save records for all modules.
+8. Implement commitSale and commitWastage using a documented recovery strategy, such as a transaction journal, backups and rollbackrecovery.
+9. Prepare changed data before mutating shared in-memory state. If a write fails, report failure and restorerecover a consistent state rather than silently leaving a partial transaction.
+10. Use atomic file replacement where supported, but do not assume multiple file replacements are automatically atomic as a group.
+
+DASHBOARD AND REPORTING
+Create DashboardReportsPanel.java in package shelflife.ui.reports and implement ReportService according to the shared contract. Display product count, total physical stock, expired batches, near-expiry batches, low-stock product count, sales total for a selected day, sales history, stock information and wastage history. Use JTable where appropriate. Refresh data after successful operations and display storage errors clearly.
+
+SHARED ARCHITECTURE
+Use the team's shared model classes and exact DataStoreservice signatures. Do not create another version of Product, ProductBatch, Sale, SaleItem, WastageRecord, or FileManager. Ask for the approved shared contract before coding if it is not supplied. Required panel constructor DashboardReportsPanel(ReportService reportService). Include public void refreshData(). Coordinate any missing method with Member 5 instead of silently changing the interface.
+
+DELIVERABLES
+1. Complete source for DataStore.java, FileManager.java, StorageException.java, DashboardReportsPanel.java and ReportService.java, plus any specifically approved helper classes.
+2. Exact package names and file locations.
+3. Sample CSV files with clearly identified fictional data.
+4. Explanation of file formats, error handling, transaction journalrollback, and recovery after restart.
+5. NetBeans setup and compile instructions.
+6. Test cases for saveload, missing files, malformed CSV, restart persistence, failed writes, sale transaction recovery, wastage consistency, and report totals.
+7. Integration instructions for Members 1, 2, 3 and 5.
+
+QUALITY RULES
+No pseudocode, placeholder methods, unexplained ellipses, or omitted source files. Never swallow errors silently. Do not claim a transaction is atomic unless the implementation provides and tests the relevant guarantee. Do not build separate data stores for individual modules. Implement only shared storage and reporting responsibilities.
