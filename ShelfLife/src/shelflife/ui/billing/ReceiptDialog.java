@@ -1,162 +1,212 @@
 package shelflife.ui.billing;
 
+import shelflife.model.AppSettings;
 import shelflife.model.Sale;
 import shelflife.model.SaleItem;
-import shelflife.ui.UITheme;
 
+import javax.print.PrintService;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.datatransfer.StringSelection;
-import java.io.File;
-import java.io.PrintWriter;
+import java.awt.print.PrinterException;
+import java.awt.print.PrinterJob;
 import java.math.BigDecimal;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
- * Modal dialog displaying an itemized customer sales receipt.
- * Shows sale ID, date, line items with batch allocations, unit prices,
- * monetary totals, and payment method details.
+ * Professional Sales Receipt Dialog.
+ * Renders an authentic 80mm thermal receipt visually on a custom canvas
+ * and routes real thermal/laser print jobs to the operating system print spooler.
  */
 public class ReceiptDialog extends JDialog {
 
     private final Sale sale;
     private final List<SaleItem> items;
-    private JTextArea txtReceipt;
+    private final AppSettings settings;
+    private final BigDecimal cashReceived;
+    private final BigDecimal changeDue;
+    private final String cashierName;
+    private final String customerName;
 
-    private static final DateTimeFormatter DISPLAY_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private ReceiptPreviewPanel previewPanel;
 
-    public ReceiptDialog(Window owner, Sale sale, List<SaleItem> items) {
-        super(owner, "Sales Receipt - " + (sale != null ? sale.getSaleId() : "New Sale"), ModalityType.APPLICATION_MODAL);
+    public ReceiptDialog(Window owner, Sale sale, List<SaleItem> items, AppSettings settings,
+                         BigDecimal cashReceived, BigDecimal changeDue,
+                         String cashierName, String customerName) {
+        super(owner, "Sales Receipt — " + (sale != null && sale.getSaleId() != null ? sale.getSaleId() : "New Sale"), ModalityType.APPLICATION_MODAL);
         this.sale = sale;
         this.items = items != null && !items.isEmpty() ? items : (sale != null ? sale.getItems() : null);
+        if (this.sale != null && (this.sale.getItems() == null || this.sale.getItems().isEmpty()) && this.items != null) {
+            this.sale.setItems(this.items);
+        }
+        this.settings = settings != null ? settings : new AppSettings();
+        this.cashReceived = cashReceived != null ? cashReceived : BigDecimal.ZERO;
+        this.changeDue = changeDue != null ? changeDue : BigDecimal.ZERO;
+        this.cashierName = (cashierName != null && !cashierName.trim().isEmpty())
+                ? cashierName.trim()
+                : (sale != null && sale.getCashierUsername() != null ? sale.getCashierUsername() : "cashier");
+        this.customerName = (customerName != null && !customerName.trim().isEmpty())
+                ? customerName.trim()
+                : (sale != null && sale.getCustomerId() != null && !sale.getCustomerId().trim().isEmpty() ? sale.getCustomerId().trim() : "Walk-in Customer");
 
         initComponents();
-        setSize(480, 620);
+        setSize(500, 700);
         setLocationRelativeTo(owner);
+        setResizable(false);
+    }
+
+    public ReceiptDialog(Window owner, Sale sale, List<SaleItem> items) {
+        this(owner, sale, items, new AppSettings(), BigDecimal.ZERO, BigDecimal.ZERO,
+                sale != null ? sale.getCashierUsername() : "cashier", "Walk-in Customer");
     }
 
     private void initComponents() {
-        setLayout(new BorderLayout(10, 10));
-        getContentPane().setBackground(UITheme.BG_PAGE);
+        setLayout(new BorderLayout());
+        getContentPane().setBackground(Color.WHITE);
 
-        txtReceipt = new JTextArea();
-        txtReceipt.setEditable(false);
-        txtReceipt.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        txtReceipt.setBackground(UITheme.CARD_BG);
-        txtReceipt.setForeground(UITheme.TEXT_MAIN);
-        txtReceipt.setBorder(new EmptyBorder(14, 16, 14, 16));
-        txtReceipt.setText(buildReceiptText());
-        txtReceipt.setCaretPosition(0);
-
-        JScrollPane scrollPane = new JScrollPane(txtReceipt);
-        scrollPane.setBorder(BorderFactory.createLineBorder(UITheme.BORDER));
+        // Center Panel: Custom Visual Receipt Preview
+        previewPanel = new ReceiptPreviewPanel();
+        JScrollPane scrollPane = new JScrollPane(previewPanel);
+        scrollPane.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY));
+        scrollPane.getViewport().setBackground(Color.WHITE);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         add(scrollPane, BorderLayout.CENTER);
 
-        JPanel pnlButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
-        pnlButtons.setOpaque(false);
-        pnlButtons.setBorder(new EmptyBorder(0, 10, 10, 10));
+        // South Panel: Single Styled Print Button
+        JPanel pnlBottom = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 10));
+        pnlBottom.setBackground(Color.WHITE);
+        pnlBottom.setBorder(new EmptyBorder(8, 0, 8, 0));
 
-        JButton btnCopy = UITheme.createSecondaryButton("Copy to Clipboard");
-        btnCopy.addActionListener(e -> copyToClipboard());
+        JButton btnPrint = new JButton("\uD83D\uDDA8  Print Receipt");
+        btnPrint.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        btnPrint.setBackground(new Color(0x2563EB)); // Royal Blue
+        btnPrint.setForeground(Color.WHITE);
+        btnPrint.setFocusPainted(false);
+        btnPrint.setBorderPainted(false);
+        btnPrint.setPreferredSize(new Dimension(200, 40));
+        btnPrint.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnPrint.addActionListener(e -> performPrint());
 
-        JButton btnSave = UITheme.createSecondaryButton("Save as File...");
-        btnSave.addActionListener(e -> saveToFile());
-
-        JButton btnClose = UITheme.createPrimaryButton("Close");
-        btnClose.addActionListener(e -> dispose());
-
-        pnlButtons.add(btnCopy);
-        pnlButtons.add(btnSave);
-        pnlButtons.add(btnClose);
-
-        add(pnlButtons, BorderLayout.SOUTH);
+        pnlBottom.add(btnPrint);
+        add(pnlBottom, BorderLayout.SOUTH);
     }
 
-    private String buildReceiptText() {
+    private void performPrint() {
         if (sale == null) {
-            return "No sales transaction data available.";
+            JOptionPane.showMessageDialog(this, "No sales transaction to print.", "Print Error", JOptionPane.ERROR_MESSAGE);
+            return;
         }
 
-        StringBuilder sb = new StringBuilder();
-        String lineSep = "==============================================================\n";
-        String dashSep = "--------------------------------------------------------------\n";
-
-        sb.append(lineSep);
-        sb.append("                  SHELFLIFE RETAIL & POS                      \n");
-        sb.append("            Inventory, Expiry & Billing Management            \n");
-        sb.append(lineSep);
-        sb.append(String.format("Receipt No  : %s\n", sale.getSaleId()));
-        sb.append(String.format("Date & Time : %s\n", sale.getSaleDateTime() != null ? sale.getSaleDateTime().format(DISPLAY_FMT) : "N/A"));
-        sb.append(String.format("Payment Mode: %s\n", sale.getPaymentMethod() != null ? sale.getPaymentMethod().getDisplayName() : "Cash"));
-        sb.append(String.format("Status      : %s\n", sale.getPaymentStatus() != null ? sale.getPaymentStatus() : "PAID"));
-        sb.append(dashSep);
-        sb.append(String.format("%-18s %-10s %5s %10s %10s\n", "Item", "Batch", "Qty", "Price", "Total"));
-        sb.append(dashSep);
-
-        int totalUnits = 0;
-        if (items != null && !items.isEmpty()) {
-            for (SaleItem item : items) {
-                String name = item.getProductName();
-                if (name == null || name.isEmpty()) {
-                    name = item.getProductId();
-                }
-                if (name.length() > 18) {
-                    name = name.substring(0, 15) + "...";
-                }
-
-                String batch = item.getBatchId() != null ? item.getBatchId() : "-";
-                if (batch.length() > 10) {
-                    batch = batch.substring(0, 9) + ".";
-                }
-
-                int qty = item.getQuantity();
-                totalUnits += qty;
-                BigDecimal price = item.getUnitPrice();
-                BigDecimal lineTot = item.getLineTotal();
-
-                sb.append(String.format("%-18s %-10s %5d %10s %10s\n",
-                        name, batch, qty, price.toPlainString(), lineTot.toPlainString()));
-            }
-        } else {
-            sb.append("  (No itemized batch records found)\n");
+        PrintService[] services = PrinterJob.lookupPrintServices();
+        if (services == null || services.length == 0) {
+            JOptionPane.showMessageDialog(this,
+                    "No printer found. Please connect a printer and try again.",
+                    "No Printer",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
         }
 
-        sb.append(dashSep);
-        sb.append(String.format("Total Units Sold : %d\n", totalUnits));
-        sb.append(String.format("Subtotal         : Rs %s\n", sale.getSubtotal() != null ? sale.getSubtotal().toPlainString() : sale.getTotalAmount().toPlainString()));
-        if (sale.getTax() != null && sale.getTax().compareTo(BigDecimal.ZERO) > 0) {
-            sb.append(String.format("Tax (GST)        : Rs %s\n", sale.getTax().toPlainString()));
-        }
-        sb.append(String.format("FINAL TOTAL      : Rs %s\n", sale.getTotalAmount().toPlainString()));
-        sb.append(lineSep);
-        sb.append("           Thank you for shopping with ShelfLife!             \n");
-        sb.append("        Please retain this receipt for batch returns.         \n");
-        sb.append(lineSep);
-
-        return sb.toString();
-    }
-
-    private void copyToClipboard() {
         try {
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(txtReceipt.getText()), null);
-            JOptionPane.showMessageDialog(this, "Receipt copied to system clipboard.", "Success", JOptionPane.INFORMATION_MESSAGE);
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Failed to copy: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            ThermalReceiptRenderer renderer = new ThermalReceiptRenderer(
+                    sale, settings, cashReceived, changeDue,
+                    sale.isDuplicateReceipt(), sale.getReprintCount(),
+                    cashierName, customerName
+            );
+            renderer.printToPrinter();
+
+            // After successful print job initiation, mark reprint count for future prints
+            sale.incrementReprintCount();
+            if (previewPanel != null) {
+                previewPanel.recalculateSizeAndRepaint();
+            }
+        } catch (PrinterException ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Printing failed. Please check your printer and try again.\n" + ex.getMessage(),
+                    "Print Error",
+                    JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void saveToFile() {
-        JFileChooser chooser = new JFileChooser();
-        chooser.setSelectedFile(new File("receipt_" + (sale != null ? sale.getSaleId() : "sale") + ".txt"));
-        if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File target = chooser.getSelectedFile();
-            try (PrintWriter out = new PrintWriter(target)) {
-                out.print(txtReceipt.getText());
-                JOptionPane.showMessageDialog(this, "Receipt saved successfully to: " + target.getName(), "Saved", JOptionPane.INFORMATION_MESSAGE);
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Failed to save file: " + ex.getMessage(), "Save Error", JOptionPane.ERROR_MESSAGE);
+    /**
+     * Custom visual renderer panel simulating thermal paper output.
+     */
+    private class ReceiptPreviewPanel extends JPanel {
+
+        public ReceiptPreviewPanel() {
+            setBackground(Color.WHITE);
+            recalculateSizeAndRepaint();
+        }
+
+        public void recalculateSizeAndRepaint() {
+            int lineCount = 30;
+            if (sale != null) {
+                ThermalReceiptRenderer renderer = new ThermalReceiptRenderer(
+                        sale, settings, cashReceived, changeDue,
+                        sale.isDuplicateReceipt(), sale.getReprintCount(),
+                        cashierName, customerName
+                );
+                String text = renderer.renderTextReceipt();
+                String[] lines = text.split("\n", -1);
+                lineCount = lines.length;
+            }
+            int calcHeight = lineCount * 14 + 50;
+            setPreferredSize(new Dimension(460, Math.max(calcHeight, 620)));
+            revalidate();
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g2.setColor(Color.WHITE);
+            g2.fillRect(0, 0, getWidth(), getHeight());
+            g2.setColor(Color.BLACK);
+
+            Font monoFont = new Font(Font.MONOSPACED, Font.PLAIN, 10);
+            Font monoBold = new Font(Font.MONOSPACED, Font.BOLD, 10);
+            Font titleFont = new Font(Font.MONOSPACED, Font.BOLD, 13);
+            g2.setFont(monoFont);
+            FontMetrics fm = g2.getFontMetrics();
+            int lineH = fm.getHeight() + 2;
+            int x = 14;
+            int y = 20;
+
+            if (sale == null) {
+                g2.setFont(monoFont);
+                g2.drawString("No sales transaction data available.", x, y);
+                return;
+            }
+
+            ThermalReceiptRenderer renderer = new ThermalReceiptRenderer(
+                    sale, settings, cashReceived, changeDue,
+                    sale.isDuplicateReceipt(), sale.getReprintCount(),
+                    cashierName, customerName
+            );
+            String text = renderer.renderTextReceipt();
+            String[] lines = text.split("\n", -1);
+
+            String shopName = (settings != null && settings.getShopName() != null) ? settings.getShopName().trim() : "";
+            String saleId = (sale != null && sale.getSaleId() != null) ? sale.getSaleId().trim() : "";
+
+            for (String line : lines) {
+                if (line.startsWith("=") || line.startsWith("-")) {
+                    g2.setFont(monoFont);
+                    g2.setColor(Color.GRAY);
+                } else if (line.contains("TOTAL DUE") || line.contains("DUPLICATE") || line.contains("REPRINT")) {
+                    g2.setFont(monoBold);
+                    g2.setColor(line.contains("DUPLICATE") ? Color.RED : Color.BLACK);
+                } else if ((!saleId.isEmpty() && line.contains(saleId))
+                        || (!shopName.isEmpty() && line.contains(shopName))) {
+                    g2.setFont(titleFont);
+                    g2.setColor(Color.BLACK);
+                } else {
+                    g2.setFont(monoFont);
+                    g2.setColor(Color.BLACK);
+                }
+                g2.drawString(line, x, y);
+                y += lineH;
             }
         }
     }

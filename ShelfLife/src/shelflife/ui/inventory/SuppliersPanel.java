@@ -1,5 +1,6 @@
 package shelflife.ui.inventory;
 
+import shelflife.model.AppSettings;
 import shelflife.model.Product;
 import shelflife.model.ProductBatch;
 import shelflife.model.Supplier;
@@ -10,6 +11,7 @@ import shelflife.service.SupplierService;
 import shelflife.service.SupplierPayableService;
 import shelflife.ui.Refreshable;
 import shelflife.ui.UITheme;
+import shelflife.ui.billing.SupplierPaymentVoucherDialog;
 import shelflife.util.CurrencyUtil;
 
 import javax.swing.*;
@@ -602,6 +604,10 @@ public class SuppliersPanel extends JPanel implements Refreshable {
         btnRefreshPayables.addActionListener(e -> refreshPayables());
         topBar.add(btnRefreshPayables);
 
+        JButton btnPrintVoucher = UITheme.createSecondaryButton("\uD83D\uDDA8  Print Voucher");
+        btnPrintVoucher.addActionListener(e -> printVoucherForSelectedPayable());
+        topBar.add(btnPrintVoucher);
+
         panel.add(topBar, BorderLayout.NORTH);
 
         String[] cols = {"Payable ID", "Supplier", "Purchase Ref", "Invoice Date", "Due Date", "Total Amount", "Amount Paid", "Balance Due", "Status", "Notes"};
@@ -683,12 +689,61 @@ public class SuppliersPanel extends JPanel implements Refreshable {
                 }
                 String method = (String) cmbMethod.getSelectedItem();
                 String ref = txtRef.getText().trim();
-                payableService.recordPayment(sp.getPayableId(), amt, method, ref, "Settlement", "admin");
-                JOptionPane.showMessageDialog(this, "Payment recorded successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+                SupplierPayment payment = payableService.recordPayment(sp.getPayableId(), amt, method, ref, "Settlement", "admin");
                 refreshPayables();
+
+                int printChoice = JOptionPane.showConfirmDialog(
+                        this,
+                        "Payment recorded successfully.\nWould you like to print an official payment voucher?",
+                        "Payment Voucher",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE
+                );
+
+                if (printChoice == JOptionPane.YES_OPTION) {
+                    SupplierPaymentVoucherDialog voucherDialog = new SupplierPaymentVoucherDialog(
+                            SwingUtilities.getWindowAncestor(this),
+                            payment,
+                            sp,
+                            new AppSettings(),
+                            "admin"
+                    );
+                    voucherDialog.setVisible(true);
+                }
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Payment failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
+    }
+
+    private void printVoucherForSelectedPayable() {
+        if (payableService == null) return;
+        int row = tblPayables != null ? tblPayables.getSelectedRow() : -1;
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "Please select an outstanding payable from the table first.", "Selection Required", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        String payableId = (String) tblPayables.getValueAt(row, 0);
+        SupplierPayable sp = payableService.getPayable(payableId);
+        if (sp == null) {
+            JOptionPane.showMessageDialog(this, "Payable record not found.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        List<SupplierPayment> payments = payableService.getPaymentsForPayable(payableId);
+        SupplierPayment paymentToPrint;
+        if (payments != null && !payments.isEmpty()) {
+            paymentToPrint = payments.get(payments.size() - 1);
+        } else {
+            paymentToPrint = new SupplierPayment("VCH-" + sp.getPayableId(), sp.getPayableId(), sp.getSupplierId(),
+                    LocalDate.now(), sp.getPaidAmount(), "RECORDED", sp.getPurchaseRef(), sp.getNotes(), "admin");
+        }
+        SupplierPaymentVoucherDialog voucherDialog = new SupplierPaymentVoucherDialog(
+                SwingUtilities.getWindowAncestor(this),
+                paymentToPrint,
+                sp,
+                new AppSettings(),
+                "admin"
+        );
+        voucherDialog.setVisible(true);
     }
 }

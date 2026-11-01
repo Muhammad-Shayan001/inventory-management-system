@@ -45,8 +45,10 @@ public class ReturnsPanel extends JPanel implements Refreshable {
     private JTextField txtReason;
     private JLabel lblTotalRefundVal;
     private JButton btnProcessReturn;
+    private JButton btnPrintLastReturn;
 
     private Sale currentLoadedSale = null;
+    private SaleReturn lastProcessedReturn = null;
 
     public ReturnsPanel(ReturnsService returnsService, SalesService salesService, AuthService authService) {
         this.returnsService = returnsService;
@@ -158,9 +160,26 @@ public class ReturnsPanel extends JPanel implements Refreshable {
         btnProcessReturn = Styles.createDangerButton("Process Refund & Return");
         btnProcessReturn.addActionListener(e -> handleProcessReturn());
 
+        btnPrintLastReturn = Styles.createSecondaryButton("\uD83D\uDDA8  Print Return Receipt");
+        btnPrintLastReturn.setEnabled(false);
+        btnPrintLastReturn.addActionListener(e -> {
+            if (lastProcessedReturn != null) {
+                String user = (authService != null && authService.getCurrentUser() != null) ?
+                        authService.getCurrentUser().getUsername() : "ADMIN";
+                ReturnReceiptDialog dialog = new ReturnReceiptDialog(
+                        SwingUtilities.getWindowAncestor(this),
+                        lastProcessedReturn,
+                        new AppSettings(),
+                        user
+                );
+                dialog.setVisible(true);
+            }
+        });
+
         actionPanel.add(lblRefundTitle);
         actionPanel.add(lblTotalRefundVal);
         actionPanel.add(btnProcessReturn);
+        actionPanel.add(btnPrintLastReturn);
 
         bottomBar.add(reasonPanel, BorderLayout.WEST);
         bottomBar.add(actionPanel, BorderLayout.EAST);
@@ -295,9 +314,22 @@ public class ReturnsPanel extends JPanel implements Refreshable {
         if (confirm == JOptionPane.YES_OPTION) {
             try {
                 SaleReturn result = returnsService.processReturn(currentLoadedSale.getSaleId(), itemsToReturn, reason, user);
+                lastProcessedReturn = result;
+                if (btnPrintLastReturn != null) {
+                    btnPrintLastReturn.setEnabled(true);
+                }
                 JOptionPane.showMessageDialog(this,
                         "Return " + result.getReturnId() + " successfully processed!\nRefund Amount: " + CurrencyUtil.formatPKR(result.getTotalRefund()),
                         "Return Success", JOptionPane.INFORMATION_MESSAGE);
+
+                ReturnReceiptDialog retDialog = new ReturnReceiptDialog(
+                        SwingUtilities.getWindowAncestor(this),
+                        result,
+                        new AppSettings(),
+                        user
+                );
+                retDialog.setVisible(true);
+
                 findSale(); // reload
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this, "Failed to process return: " + ex.getMessage(), "Return Error", JOptionPane.ERROR_MESSAGE);

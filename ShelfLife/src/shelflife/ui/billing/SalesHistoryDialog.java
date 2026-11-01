@@ -1,5 +1,6 @@
 package shelflife.ui.billing;
 
+import shelflife.model.AppSettings;
 import shelflife.model.Sale;
 import shelflife.model.SaleItem;
 import shelflife.service.SalesService;
@@ -7,6 +8,7 @@ import shelflife.ui.UITheme;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import java.math.BigDecimal;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
@@ -107,7 +109,7 @@ public class SalesHistoryDialog extends JDialog {
         pnlBottom.setOpaque(false);
         pnlBottom.setBorder(new EmptyBorder(6, 12, 10, 12));
 
-        JButton btnViewReceipt = UITheme.createPrimaryButton("View Selected Receipt");
+        JButton btnViewReceipt = UITheme.createPrimaryButton("\uD83D\uDDA8  View / Reprint Receipt");
         btnViewReceipt.addActionListener(e -> viewSelectedReceipt());
 
         JButton btnClose = UITheme.createSecondaryButton("Close");
@@ -163,7 +165,28 @@ public class SalesHistoryDialog extends JDialog {
         }
 
         List<SaleItem> items = salesService.getSaleItems(saleId);
-        ReceiptDialog receiptDialog = new ReceiptDialog(this, sale, items);
+        if ((sale.getItems() == null || sale.getItems().isEmpty()) && items != null && !items.isEmpty()) {
+            sale.setItems(items);
+        }
+
+        // Sale loaded from history should be treated as a reprint (isDuplicateReceipt = true)
+        if (sale.getReprintCount() == 0) {
+            sale.incrementReprintCount();
+        }
+        try {
+            salesService.markDuplicateReceipt(saleId);
+        } catch (Exception ignored) {}
+
+        ReceiptDialog receiptDialog = new ReceiptDialog(
+                this,
+                sale,
+                items,
+                new AppSettings(),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                sale.getCashierUsername() != null ? sale.getCashierUsername() : "cashier",
+                sale.getCustomerId() != null && !sale.getCustomerId().isEmpty() ? sale.getCustomerId() : "Walk-in Customer"
+        );
         receiptDialog.setVisible(true);
     }
 }

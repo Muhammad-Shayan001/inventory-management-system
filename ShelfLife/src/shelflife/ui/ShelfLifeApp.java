@@ -660,9 +660,9 @@ private static class SidebarNavButton extends JButton {
 
     private void initPanels() {
         inventoryPanel = new ProductInventoryPanel(inventoryService);
-        suppliersPanel = new SuppliersPanel(inventoryService, supplierService);
+        suppliersPanel = new SuppliersPanel(inventoryService, supplierService, supplierPayableService);
         expiryPanel = new ExpiryAlertsPanel(inventoryService, expiryService);
-        billingPanel = new BillingPanel(inventoryService, salesService);
+        billingPanel = new BillingPanel(inventoryService, salesService, heldBillService, customerCreditService, cashierShiftService, settingsService, authService);
         returnsPanel = new ReturnsPanel(returnsService, salesService, authService);
         reportsPanel = new DashboardReportsPanel(reportService, financialService, capitalService, expenseService, cashAccountService);
         reorderPanel = new ReorderListPanel(inventoryService, supplierService, reportService);

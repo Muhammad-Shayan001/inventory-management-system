@@ -999,7 +999,30 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
             updateSummaryTotals();
             refreshData();
 
-            ReceiptDialog dialog = new ReceiptDialog(SwingUtilities.getWindowAncestor(this), committedSale, committedSale.getItems());
+            BigDecimal cashRcvd = BigDecimal.ZERO;
+            try {
+                String txt = txtCashReceived != null ? txtCashReceived.getText().trim() : "";
+                if (!txt.isEmpty()) cashRcvd = new BigDecimal(txt);
+            } catch (Exception ignored) {}
+
+            BigDecimal change = cashRcvd.subtract(committedSale.getTotalAmount());
+            if (change.compareTo(BigDecimal.ZERO) < 0) change = BigDecimal.ZERO;
+
+            AppSettings settings = new AppSettings();
+            if (settingsService != null) {
+                try { settings = settingsService.getSettings(); } catch (Exception ignored) {}
+            }
+
+            ReceiptDialog dialog = new ReceiptDialog(
+                    SwingUtilities.getWindowAncestor(this),
+                    committedSale,
+                    committedSale.getItems(),
+                    settings,
+                    cashRcvd,
+                    change,
+                    currentCashier,
+                    "Walk-in Customer"
+            );
             dialog.setVisible(true);
 
         } catch (SaleException ex) {

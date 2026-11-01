@@ -107,6 +107,10 @@ public class SaleReturnItem {
         this.disposition = disposition != null ? disposition : "RESTOCK";
     }
 
+    public boolean isRestocked() {
+        return "RESTOCK".equalsIgnoreCase(disposition);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
