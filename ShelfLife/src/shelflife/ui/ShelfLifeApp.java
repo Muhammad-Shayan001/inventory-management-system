@@ -72,6 +72,8 @@ public class ShelfLifeApp extends JFrame {
     private ReorderListPanel reorderPanel;
     private ActivityLogPanel activityLogPanel;
     private SettingsAndBackupPanel settingsAndBackupPanel;
+    private shelflife.ui.reports.business.BusinessOverviewPanel overviewPanel;
+
 
     // Role-restricted Menu items
     private JMenuItem menuItemBackup;
@@ -85,6 +87,8 @@ public class ShelfLifeApp extends JFrame {
     // Top Header Components
     private JLabel lblStoreTitle;
     private JLabel lblUserBadge;
+    private JLabel lblSidebarUserName;
+    private JLabel lblSidebarUserRole;
 
     // Sidebar navigation buttons
     private final Map<String, JButton> navButtons = new HashMap<>();
@@ -109,12 +113,22 @@ public class ShelfLifeApp extends JFrame {
         if (customDataStore != null) {
             this.dataStore = customDataStore;
         } else {
-            File homeDataDir = new File(System.getProperty("user.home"), "ShelfLifeData");
-            if (!homeDataDir.exists()) {
-                homeDataDir.mkdirs();
+            DataStore ds;
+            try {
+                File homeDataDir = new File(System.getProperty("user.home"), "ShelfLifeData");
+                if (!homeDataDir.exists()) {
+                    homeDataDir.mkdirs();
+                }
+                bootstrapDataFiles(homeDataDir);
+                ds = new CsvDataStore(homeDataDir);
+            } catch (Exception e) {
+                File localData = new File("data");
+                if (!localData.exists()) {
+                    localData.mkdirs();
+                }
+                ds = new CsvDataStore(localData);
             }
-            bootstrapDataFiles(homeDataDir);
-            this.dataStore = new CsvDataStore(homeDataDir);
+            this.dataStore = ds;
         }
 
         // Initialize Shared Business Services with Single DataStore Reference
@@ -192,6 +206,7 @@ public class ShelfLifeApp extends JFrame {
 
     private void applyUserSession(User user) {
         if (user == null) return;
+        this.user = user;
 
         // Log session start
         logService.log(user.getUsername(), "LOGIN", "User signed in to desktop console", user.getUserId());
@@ -200,10 +215,19 @@ public class ShelfLifeApp extends JFrame {
         lblUserBadge.setText(user.getFullName() + " (" + user.getRole().getDisplayName() + ")");
         lblStatusUser.setText("User: " + user.getUsername() + " [" + user.getRole().getDisplayName() + "]");
         lblStoreTitle.setText(settingsService.getSettings().getShopName());
+        if (lblSidebarUserName != null) {
+            lblSidebarUserName.setText(user.getFullName());
+        }
+        if (lblSidebarUserRole != null) {
+            lblSidebarUserRole.setText(user.getRole().getDisplayName());
+        }
 
         // Reconfigure sidebar buttons and menus based on Role
         rebuildSidebar(user.getRole());
         rebuildMenuBar(user.getRole());
+        if (billingPanel != null) {
+            billingPanel.setCurrentCashier(user.getUsername());
+        }
         if (inventoryPanel != null) {
             inventoryPanel.applyRolePermissions(user.getRole());
         }
@@ -306,18 +330,18 @@ public class ShelfLifeApp extends JFrame {
         JPanel sidebar = new JPanel(new BorderLayout());
         sidebar.setPreferredSize(new Dimension(shelflife.ui.theme.Theme.SIDEBAR_WIDTH, 0));
         sidebar.setBackground(shelflife.ui.theme.Theme.BG_SIDEBAR);
-        sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Color.decode("#CBD5E1")));
+        sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Color.decode("#1E293B")));
 
         // Top Sidebar Branding
-        JPanel brandHeader = new JPanel(new BorderLayout(0, 2));
+        JPanel brandHeader = new JPanel(new BorderLayout(0, 3));
         brandHeader.setOpaque(false);
-        brandHeader.setBorder(new EmptyBorder(16, 16, 12, 16));
+        brandHeader.setBorder(new EmptyBorder(18, 16, 14, 16));
         JLabel lblApp = new JLabel("ShelfLife");
         lblApp.setFont(shelflife.ui.theme.Theme.FONT_APP_TITLE);
-        lblApp.setForeground(Color.BLACK);
-        JLabel lblSub = new JLabel("POS & Inventory");
+        lblApp.setForeground(Color.WHITE);
+        JLabel lblSub = new JLabel("POS & Retail ERP");
         lblSub.setFont(shelflife.ui.theme.Theme.FONT_HINT);
-        lblSub.setForeground(Color.decode("#64748B"));
+        lblSub.setForeground(new Color(148, 163, 184));
         brandHeader.add(lblApp, BorderLayout.NORTH);
         brandHeader.add(lblSub, BorderLayout.SOUTH);
         sidebar.add(brandHeader, BorderLayout.NORTH);
@@ -338,47 +362,62 @@ public class ShelfLifeApp extends JFrame {
         // Sidebar footer - shows user name, role, and Sign Out button
         JPanel footer = new JPanel(new BorderLayout());
         footer.setOpaque(false);
-        footer.setBorder(new EmptyBorder(6, 14, 6, 14));
+        footer.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(51, 65, 85)),
+                new EmptyBorder(10, 14, 12, 14)
+        ));
 
         // User name and role
         JPanel userPanel = new JPanel(new BorderLayout(8, 0));
         userPanel.setOpaque(false);
 
-        JLabel lblUserName = new JLabel(user != null ? user.getFullName() : "Signed in");
-        lblUserName.setFont(shelflife.ui.theme.Theme.FONT_BOLD);
-        lblUserName.setForeground(shelflife.ui.theme.Theme.FG_SIDEBAR_TEXT);
-        lblUserName.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
+        lblSidebarUserName = new JLabel(user != null ? user.getFullName() : "Administrator");
+        lblSidebarUserName.setFont(shelflife.ui.theme.Theme.FONT_BOLD);
+        lblSidebarUserName.setForeground(Color.WHITE);
+        lblSidebarUserName.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
 
-        JLabel lblUserRole = new JLabel(user != null ? user.getRole().getDisplayName() : "Role");
-        lblUserRole.setFont(shelflife.ui.theme.Theme.FONT_SUBTITLE);
-        lblUserRole.setForeground(shelflife.ui.theme.Theme.FG_SIDEBAR_TEXT);
-        lblUserRole.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        lblSidebarUserRole = new JLabel(user != null ? user.getRole().getDisplayName() : "Role");
+        lblSidebarUserRole.setFont(shelflife.ui.theme.Theme.FONT_SUBTITLE);
+        lblSidebarUserRole.setForeground(new Color(148, 163, 184));
+        lblSidebarUserRole.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
 
-        userPanel.add(lblUserName, BorderLayout.NORTH);
-        userPanel.add(lblUserRole, BorderLayout.SOUTH);
+        userPanel.add(lblSidebarUserName, BorderLayout.NORTH);
+        userPanel.add(lblSidebarUserRole, BorderLayout.SOUTH);
 
-        // Sign Out button with standard FlatLaf styling
-        JButton signOutBtn = new JButton("Sign Out");
+        // Sign Out button with styled look
+        JButton signOutBtn = new JButton("Sign Out") {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Color bg = getModel().isPressed() ? new Color(153, 27, 27) :
+                           getModel().isRollover() ? new Color(220, 38, 38) :
+                           new Color(127, 29, 29, 180);
+                g2.setColor(bg);
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 8, 8));
+                g2.setColor(new Color(254, 202, 202));
+                g2.setFont(getFont());
+                FontMetrics fm = g2.getFontMetrics();
+                int tx = (getWidth() - fm.stringWidth(getText())) / 2;
+                int ty = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+                g2.drawString(getText(), tx, ty);
+                g2.dispose();
+            }
+        };
         signOutBtn.setFont(shelflife.ui.theme.Theme.FONT_BOLD);
-        signOutBtn.setForeground(shelflife.ui.theme.Theme.FG_SIDEBAR_TEXT);
         signOutBtn.setFocusPainted(false);
         signOutBtn.setContentAreaFilled(false);
         signOutBtn.setBorderPainted(false);
         signOutBtn.setOpaque(false);
         signOutBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        signOutBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
-        signOutBtn.setPreferredSize(new Dimension(200, 38));
-        signOutBtn.setMinimumSize(new Dimension(200, 38));
-        signOutBtn.setMaximumSize(new Dimension(32767, 38));
-
+        signOutBtn.setPreferredSize(new Dimension(200, 36));
+        signOutBtn.setMinimumSize(new Dimension(200, 36));
+        signOutBtn.setMaximumSize(new Dimension(32767, 36));
+        signOutBtn.setBorder(new EmptyBorder(6, 0, 0, 0));
         signOutBtn.addActionListener(e -> handleLogout());
 
-        JPanel btnContainer = new JPanel(new BorderLayout());
-        btnContainer.setOpaque(false);
-        btnContainer.add(signOutBtn, BorderLayout.CENTER);
-
         footer.add(userPanel, BorderLayout.NORTH);
-        footer.add(btnContainer, BorderLayout.SOUTH);
+        footer.add(signOutBtn, BorderLayout.SOUTH);
 
         sidebar.add(footer, BorderLayout.SOUTH);
 
@@ -396,6 +435,7 @@ public class ShelfLifeApp extends JFrame {
             addNavButton("Billing & Sales POS", "billing");
             addNavButton("Returns & Refunds", "returns");
             addNavButton("Reports & Dashboard", "reports");
+            addNavButton("Business Overview", "overview");
             addNavButton("Stock Reorder List", "reorder");
             addNavButton("Activity Audit Log", "logs");
             addNavButton("Settings & Backup", "settings");
@@ -425,10 +465,10 @@ public class ShelfLifeApp extends JFrame {
 
     /**
      * Custom antialiased sidebar navigation button.
-     * Guarantees 100% visible, high-contrast solid black text on clean card backgrounds,
-     * immune to native Windows LookAndFeel button overrides.
+     * High-contrast enterprise design: native dark sidebar integration,
+     * crisp antialiased text, and smooth active/hover highlights.
      */
-private static class SidebarNavButton extends JButton {
+    private static class SidebarNavButton extends JButton {
         private boolean isActive = false;
         private boolean isHovered = false;
 
@@ -475,41 +515,26 @@ private static class SidebarNavButton extends JButton {
             int w = getWidth();
             int h = getHeight();
 
-            Color bg;
-            Color border;
-
             if (isActive) {
-                bg = Color.decode("#DBEAFE"); // Soft blue card for selected item
-                border = Color.decode("#2563EB"); // Royal blue accent border
+                // Active item: vibrant royal blue fill with bright indicator
+                g2.setColor(shelflife.ui.theme.Theme.BG_SIDEBAR_SELECTED);
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, 8, 8));
+
+                g2.setColor(new Color(147, 197, 253));
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(2, 4, 4, h - 8, 3, 3));
             } else if (isHovered) {
-                bg = Color.decode("#F1F5F9"); // Subtle light gray hover
-                border = Color.decode("#CBD5E1");
-            } else {
-                bg = Color.WHITE;
-                border = Color.decode("#E2E8F0");
+                // Hover item: subtle lighter navy
+                g2.setColor(shelflife.ui.theme.Theme.BG_SIDEBAR_HOVER);
+                g2.fill(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, 8, 8));
             }
 
-            // Fill 8px rounded card
-            g2.setColor(bg);
-            g2.fill(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, 8, 8));
-
-            // Draw border
-            g2.setColor(border);
-            g2.setStroke(new BasicStroke(isActive ? 1.5f : 1.0f));
-            g2.draw(new java.awt.geom.RoundRectangle2D.Float(0.5f, 0.5f, w - 1f, h - 1f, 8, 8));
-
-            // Left indicator bar for active item
-            if (isActive) {
-                g2.setColor(Color.decode("#2563EB"));
-                g2.fill(new java.awt.geom.RoundRectangle2D.Float(1, 3, 4, h - 6, 3, 3));
-            }
-
-            // Draw text in 100% solid black
+            // High contrast text
+            Color textColor = isActive ? Color.WHITE : shelflife.ui.theme.Theme.FG_SIDEBAR_TEXT;
             g2.setFont(getFont());
             FontMetrics fm = g2.getFontMetrics();
-            int textX = isActive ? 16 : 14;
+            int textX = isActive ? 18 : 14;
             int textY = (h - fm.getHeight()) / 2 + fm.getAscent();
-            g2.setColor(Color.BLACK);
+            g2.setColor(textColor);
             g2.drawString(getText(), textX, textY);
 
             g2.dispose();
@@ -678,7 +703,11 @@ private static class SidebarNavButton extends JButton {
         cardPanel.add(reorderPanel, "reorder");
         cardPanel.add(activityLogPanel, "logs");
         cardPanel.add(settingsAndBackupPanel, "settings");
+
+        overviewPanel = new shelflife.ui.reports.business.BusinessOverviewPanel(reportService);
+        cardPanel.add(overviewPanel, "overview");
     }
+
 
     public void showCard(String cardKey) {
         if ("activity".equalsIgnoreCase(cardKey)) {
@@ -728,6 +757,9 @@ private static class SidebarNavButton extends JButton {
             case "settings":
                 if (settingsAndBackupPanel != null) settingsAndBackupPanel.refreshData();
                 break;
+            case "overview":
+                if (overviewPanel != null) overviewPanel.refreshData();
+                break;
         }
     }
 
@@ -752,6 +784,7 @@ private static class SidebarNavButton extends JButton {
             case "reorder": return "Stock Reorder Planning";
             case "logs": return "Activity & Security Audit Trail";
             case "settings": return "System Settings & Database Backups";
+            case "overview": return "Business Analytics Overview";
             default: return key;
         }
     }

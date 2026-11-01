@@ -12,10 +12,10 @@ import java.awt.geom.RoundRectangle2D;
 public class ToastNotification extends JWindow {
 
     public enum Type {
-        SUCCESS(new Color(0x166534), new Color(0xDCFCE7), "✓"),
-        INFO(new Color(0x1E40AF), new Color(0xDBEAFE), "ℹ"),
-        WARNING(new Color(0x92400E), new Color(0xFEF3C7), "⚠"),
-        ERROR(new Color(0x991B1B), new Color(0xFEE2E2), "✕");
+        SUCCESS(new Color(0x166534), new Color(0xDCFCE7), "OK"),
+        INFO(new Color(0x1E40AF), new Color(0xDBEAFE), "i"),
+        WARNING(new Color(0x92400E), new Color(0xFEF3C7), "!"),
+        ERROR(new Color(0x991B1B), new Color(0xFEE2E2), "X");
 
         final Color fg;
         final Color bg;

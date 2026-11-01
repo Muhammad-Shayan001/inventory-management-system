@@ -29,7 +29,7 @@ public class SystemAuditTestSuite {
 
     public static void main(String[] args) {
         System.out.println("===============================================================================");
-        System.out.println("     SHELFLIFE MASTER SYSTEM AUDIT & FINANCIAL TEST SUITE (40 SCENARIOS)      ");
+        System.out.println("     SHELFLIFE MASTER SYSTEM AUDIT & FINANCIAL TEST SUITE (44 SCENARIOS)      ");
         System.out.println("===============================================================================");
 
         File tempDir = null;
@@ -54,7 +54,7 @@ public class SystemAuditTestSuite {
             System.err.println("AUDIT STATUS: FAILED");
             System.exit(1);
         } else {
-            System.out.println("AUDIT STATUS: ALL 40 SCENARIOS PASSED WITH ZERO DEFECTS (100% SUCCESS)");
+            System.out.println("AUDIT STATUS: ALL 44 SCENARIOS PASSED WITH ZERO DEFECTS (100% SUCCESS)");
         }
     }
 
@@ -99,6 +99,10 @@ public class SystemAuditTestSuite {
         test38_OwnerPersonalWithdrawal(testDir);
         test39_MasterInvestmentRecoveryScenario(testDir);
         test40_CashFlowReconciliation(testDir);
+        test41_PasswordHashingFormats(testDir);
+        test42_LegacyHashUpgradedOnLogin(testDir);
+        test43_BusinessAnalyticsAreConsistent(testDir);
+        test44_DataDictionaryMatchesRealFiles(testDir);
     }
 
     private static void recordPass(int id, String scenario, String details) {
@@ -641,7 +645,7 @@ public class SystemAuditTestSuite {
     // =========================================================================
     private static void test20_VerifyUIComponentsAndNavigation(File dir) {
         try {
-            ShelfLifeApp app = new ShelfLifeApp(false);
+            ShelfLifeApp app = new ShelfLifeApp(new CsvDataStore(dir), false);
             app.showCard("inventory");
             app.showCard("suppliers");
             app.showCard("expiry");
@@ -1453,5 +1457,184 @@ public class SystemAuditTestSuite {
             }
         }
         file.delete();
+    }
+
+    // =========================================================================
+    // Scenario 41: PBKDF2 hashing, wrong password, and legacy SHA-256 compatibility
+    // =========================================================================
+    private static void test41_PasswordHashingFormats(File dir) {
+        try {
+            String salt = shelflife.util.PasswordUtil.generateSalt();
+            String hash = shelflife.util.PasswordUtil.hashPassword("S3cret!pass", salt);
+            boolean ok = hash.startsWith("pbkdf2$")
+                    && shelflife.util.PasswordUtil.verifyPassword("S3cret!pass", salt, hash)
+                    && !shelflife.util.PasswordUtil.verifyPassword("wrong", salt, hash)
+                    && !shelflife.util.PasswordUtil.needsUpgrade(hash);
+            String legacy = legacySha256("S3cret!pass", salt);
+            ok = ok && shelflife.util.PasswordUtil.verifyPassword("S3cret!pass", salt, legacy)
+                    && !shelflife.util.PasswordUtil.verifyPassword("wrong", salt, legacy)
+                    && shelflife.util.PasswordUtil.needsUpgrade(legacy);
+            if (ok) {
+                recordPass(41, "Password Hashing Formats",
+                        "PBKDF2 hash verified, wrong password rejected, old SHA-256 hashes still verify and are flagged for upgrade");
+            } else {
+                recordFail(41, "Password Hashing Formats", "Hash verification rules were not met");
+            }
+        } catch (Exception ex) {
+            recordFail(41, "Password Hashing Formats", String.valueOf(ex));
+        }
+    }
+
+    private static String legacySha256(String password, String salt) throws Exception {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        md.update(salt.getBytes("UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        for (byte b : md.digest(password.getBytes("UTF-8"))) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    // =========================================================================
+    // Scenario 42: an account with an old hash is upgraded silently at login
+    // =========================================================================
+    private static void test42_LegacyHashUpgradedOnLogin(File dir) {
+        try {
+            File sub = Files.createTempDirectory(dir.toPath(), "upgrade").toFile();
+            CsvDataStore ds = new CsvDataStore(sub);
+            String salt = "legacy-salt-01";
+            List<User> users = new ArrayList<User>();
+            users.add(new User("USER-OLD", "olduser", legacySha256("oldpass123", salt), salt,
+                    Role.CASHIER, "Old Account", true, false));
+            ds.saveUsers(users);
+
+            AuthService auth = new AuthServiceImpl(ds);
+            auth.login("olduser", "oldpass123");
+
+            String stored = null;
+            for (User u : new CsvDataStore(sub).loadUsers()) {
+                if (u.getUsername().equals("olduser")) {
+                    stored = u.getPasswordHash();
+                }
+            }
+            boolean again = new AuthServiceImpl(new CsvDataStore(sub)).login("olduser", "oldpass123") != null;
+            if (stored != null && stored.startsWith("pbkdf2$") && again) {
+                recordPass(42, "Legacy Hash Upgrade On Login",
+                        "Old SHA-256 account signed in, was re-hashed with PBKDF2, and can still sign in afterwards");
+            } else {
+                recordFail(42, "Legacy Hash Upgrade On Login", "Stored hash after login: " + stored);
+            }
+        } catch (Exception ex) {
+            recordFail(42, "Legacy Hash Upgrade On Login", String.valueOf(ex));
+        }
+    }
+
+    // =========================================================================
+    // Scenario 43: dashboard analytics add up (on demo data)
+    // =========================================================================
+    private static void test43_BusinessAnalyticsAreConsistent(File dir) {
+        try {
+            File sub = Files.createTempDirectory(dir.toPath(), "analytics").toFile();
+            DemoShop.build(sub);
+            CsvDataStore ds = new CsvDataStore(sub);
+            InventoryService inv = new InventoryServiceImpl(ds);
+            SalesService sales = new SalesServiceImpl(inv, ds);
+            ReportService rep = new ReportServiceImpl(inv, sales, ds);
+
+            LocalDate to = LocalDate.now();
+            LocalDate from = to.minusDays(29);
+            BigDecimal revenue = rep.getRevenueForRange(from, to);
+            BigDecimal dailySum = BigDecimal.ZERO;
+            for (BigDecimal v : rep.getDailySales(from, to).values()) {
+                dailySum = dailySum.add(v);
+            }
+            BigDecimal paymentSum = BigDecimal.ZERO;
+            for (BigDecimal v : rep.getSalesByPaymentMethod(from, to).values()) {
+                paymentSum = paymentSum.add(v);
+            }
+            BigDecimal hourSum = BigDecimal.ZERO;
+            for (BigDecimal v : rep.getSalesByHour(from, to).values()) {
+                hourSum = hourSum.add(v);
+            }
+            List<shelflife.model.ProductSales> top = rep.getTopProducts(from, to, 5);
+            boolean sorted = top.size() == 5;
+            for (int i = 1; i < top.size(); i++) {
+                sorted = sorted && top.get(i - 1).getRevenue().compareTo(top.get(i).getRevenue()) >= 0;
+            }
+            boolean namesResolved = !top.isEmpty() && !top.get(0).getProductName().startsWith("PROD-");
+            shelflife.model.StockHealth health = rep.getStockHealth(to, 7);
+            boolean stockOk = health.getTotalQuantity() == rep.getTotalPhysicalStock();
+            boolean profitOk = rep.getGrossProfitForRange(from, to).compareTo(revenue) < 0
+                    && rep.getGrossProfitForRange(from, to).signum() > 0;
+            boolean sums = revenue.signum() > 0 && revenue.compareTo(dailySum) == 0
+                    && revenue.compareTo(paymentSum) == 0 && revenue.compareTo(hourSum) == 0;
+            if (sums && sorted && namesResolved && stockOk && profitOk) {
+                recordPass(43, "Business Analytics Consistency",
+                        "Daily, hourly and payment totals all equal revenue (" + revenue
+                        + "); top products sorted with real names; stock health matches physical stock");
+            } else {
+                recordFail(43, "Business Analytics Consistency", "sums=" + sums + " sorted=" + sorted
+                        + " names=" + namesResolved + " stock=" + stockOk + " profit=" + profitOk);
+            }
+        } catch (Exception ex) {
+            recordFail(43, "Business Analytics Consistency", String.valueOf(ex));
+        }
+    }
+
+    // =========================================================================
+    // Scenario 44: docs/DATA_DICTIONARY.md lists exactly the columns the program writes
+    // =========================================================================
+    private static void test44_DataDictionaryMatchesRealFiles(File dir) {
+        try {
+            File doc = new File("docs/DATA_DICTIONARY.md");
+            if (!doc.exists()) {
+                recordFail(44, "Data Dictionary Matches Code",
+                        "docs/DATA_DICTIONARY.md not found (run the tests from the project root)");
+                return;
+            }
+            String text = new String(Files.readAllBytes(doc.toPath()), "UTF-8").replace("\r\n", "\n");
+            Map<String, String> documented = new LinkedHashMap<String, String>();
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("### `([a-z_]+)\\.csv`[^\\n]*\\n(?:.*?\\n)*?```csv\\n([^\\n]+)\\n```")
+                    .matcher(text);
+            while (m.find()) {
+                documented.put(m.group(1), m.group(2).trim());
+            }
+
+            File sub = Files.createTempDirectory(dir.toPath(), "dict").toFile();
+            new CsvDataStore(sub);
+            List<String> problems = new ArrayList<String>();
+            File[] files = sub.listFiles();
+            int checked = 0;
+            if (files != null) {
+                for (File f : files) {
+                    if (!f.getName().endsWith(".csv")) {
+                        continue;
+                    }
+                    String name = f.getName().substring(0, f.getName().length() - 4);
+                    List<String> csvLines = Files.readAllLines(f.toPath(), java.nio.charset.StandardCharsets.UTF_8);
+                    String header = csvLines.isEmpty() ? "" : csvLines.get(0).replace("\uFEFF", "").trim();
+                    checked++;
+                    if (!documented.containsKey(name)) {
+                        problems.add(name + " is not documented");
+                    } else if (!documented.get(name).equals(header)) {
+                        problems.add(name + " columns differ");
+                    }
+                }
+            }
+            for (String name : documented.keySet()) {
+                if (!new File(sub, name + ".csv").exists()) {
+                    problems.add(name + " is documented but the program does not create it");
+                }
+            }
+            if (problems.isEmpty() && checked > 0) {
+                recordPass(44, "Data Dictionary Matches Code",
+                        checked + " CSV tables created by the program match docs/DATA_DICTIONARY.md column for column");
+            } else {
+                recordFail(44, "Data Dictionary Matches Code", problems.toString());
+            }
+        } catch (Exception ex) {
+            recordFail(44, "Data Dictionary Matches Code", String.valueOf(ex));
+        }
     }
 }

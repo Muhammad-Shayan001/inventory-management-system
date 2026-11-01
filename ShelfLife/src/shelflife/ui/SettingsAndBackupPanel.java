@@ -271,6 +271,17 @@ public class SettingsAndBackupPanel extends JPanel implements Refreshable {
         btnCreateUser.addActionListener(e -> handleCreateUser());
         panel.add(btnCreateUser, gbc);
 
+        row++;
+        gbc.gridy = row;
+        gbc.insets = new Insets(4, 6, 6, 6);
+        JButton btnManageUsers = UITheme.createSecondaryButton("Manage All Users...");
+        btnManageUsers.addActionListener(e -> {
+            Window win = SwingUtilities.getWindowAncestor(SettingsAndBackupPanel.this);
+            Frame fr = (win instanceof Frame) ? (Frame) win : null;
+            new UserManagementDialog(fr, authService).setVisible(true);
+        });
+        panel.add(btnManageUsers, gbc);
+
         return panel;
     }
 

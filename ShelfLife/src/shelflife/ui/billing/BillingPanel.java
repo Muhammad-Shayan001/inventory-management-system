@@ -15,6 +15,8 @@ import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -147,6 +149,8 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         pnlCenter.add(shelflife.ui.theme.Styles.createScrollPane(pnlLeft), BorderLayout.WEST);
         pnlCenter.add(pnlRight, BorderLayout.CENTER);
         add(pnlCenter, BorderLayout.CENTER);
+
+        installKeyboardShortcuts();
     }
 
     private JPanel createHeaderPanel() {
@@ -450,7 +454,7 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         pnlCashRow.add(lblCashTendered);
 
         txtCashReceived = new JTextField();
-        txtCashReceived.setToolTipText("Enter cash received");
+        txtCashReceived.setToolTipText("Enter cash received [F4]");
         txtCashReceived.setHorizontalAlignment(JTextField.RIGHT);
         txtCashReceived.setFont(new Font("Segoe UI", Font.BOLD, 13));
         txtCashReceived.getDocument().addDocumentListener(new DocumentListener() {
@@ -477,11 +481,11 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         JPanel pnlSecondaryRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
         pnlSecondaryRow.setOpaque(false);
 
-        btnHoldBill = UITheme.createSecondaryButton("Hold Bill");
+        btnHoldBill = UITheme.createSecondaryButton("Hold (F6)");
         btnHoldBill.addActionListener(e -> handleHoldBill());
         pnlSecondaryRow.add(btnHoldBill);
 
-        btnResumeBills = UITheme.createSecondaryButton("Resume Bills");
+        btnResumeBills = UITheme.createSecondaryButton("Resume (F7)");
         btnResumeBills.addActionListener(e -> handleResumeBills());
         pnlSecondaryRow.add(btnResumeBills);
 
@@ -489,7 +493,7 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         btnSplitPayment.addActionListener(e -> handleSplitPayment());
         pnlSecondaryRow.add(btnSplitPayment);
 
-        btnKhata = UITheme.createSecondaryButton("Customer Khata");
+        btnKhata = UITheme.createSecondaryButton("Khata (F3)");
         btnKhata.addActionListener(e -> handleOpenKhata());
         pnlSecondaryRow.add(btnKhata);
 
@@ -512,8 +516,8 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
         cmbPaymentMethod.setFont(UITheme.FONT_REGULAR);
         pnlPrimaryRow.add(cmbPaymentMethod);
 
-        btnCheckout = UITheme.createPrimaryButton("Checkout & Commit Sale");
-        btnCheckout.setPreferredSize(new Dimension(200, 40));
+        btnCheckout = UITheme.createPrimaryButton("Checkout & Commit (F8)");
+        btnCheckout.setPreferredSize(new Dimension(210, 40));
         btnCheckout.addActionListener(e -> handleCheckout());
         pnlPrimaryRow.add(btnCheckout);
 
@@ -1097,5 +1101,82 @@ public class BillingPanel extends JPanel implements shelflife.ui.Refreshable {
     private void openSalesHistory() {
         SalesHistoryDialog dialog = new SalesHistoryDialog(SwingUtilities.getWindowAncestor(this), salesService);
         dialog.setVisible(true);
+    }
+
+    private void installKeyboardShortcuts() {
+        InputMap im = getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        ActionMap am = getActionMap();
+
+        // F2: Focus Barcode / Search
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F2, 0), "focusBarcode");
+        am.put("focusBarcode", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (txtBarcodeScan != null) {
+                    txtBarcodeScan.requestFocusInWindow();
+                    txtBarcodeScan.selectAll();
+                }
+            }
+        });
+
+        // F3: Customer Khata
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "openKhata");
+        am.put("openKhata", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                handleOpenKhata();
+            }
+        });
+
+        // F4: Focus Cash Received
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F4, 0), "focusCash");
+        am.put("focusCash", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (txtCashReceived != null) {
+                    txtCashReceived.requestFocusInWindow();
+                    txtCashReceived.selectAll();
+                }
+            }
+        });
+
+        // F6: Hold Bill
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F6, 0), "holdBill");
+        am.put("holdBill", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                handleHoldBill();
+            }
+        });
+
+        // F7: Resume Bills
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F7, 0), "resumeBills");
+        am.put("resumeBills", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                handleResumeBills();
+            }
+        });
+
+        // F8: Checkout
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F8, 0), "checkoutSale");
+        am.put("checkoutSale", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                handleCheckout();
+            }
+        });
+
+        // Delete: Remove item
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "removeCartItem");
+        am.put("removeCartItem", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                if (!(focusOwner instanceof javax.swing.text.JTextComponent)) {
+                    handleRemoveSelected();
+                }
+            }
+        });
     }
 }

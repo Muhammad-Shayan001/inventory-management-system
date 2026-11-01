@@ -1,583 +1,606 @@
 package shelflife.ui.reports.business;
 
-import shelflife.model.*;
-import shelflife.service.*;
-import shelflife.ui.chart.*;
-import shelflife.ui.theme.Theme;
+import shelflife.model.Product;
+import shelflife.model.ProductBatch;
+import shelflife.model.ProductSales;
+import shelflife.model.MonthlyRow;
+import shelflife.model.Sale;
+import shelflife.model.StockHealth;
+import shelflife.service.ReportService;
+import shelflife.ui.Refreshable;
+import shelflife.ui.chart.BarChartPanel;
+import shelflife.ui.chart.DonutChartPanel;
+import shelflife.ui.chart.LineChartPanel;
 import shelflife.ui.theme.Styles;
+import shelflife.ui.theme.Theme;
+import shelflife.util.CurrencyUtil;
 
-import javax.swing.*;
-import javax.swing.border.*;
-import javax.swing.table.*;
-import java.awt.*;
-import java.awt.event.*;
-import java.math.*;
-import java.time.*;
-import java.util.*;
+import javax.imageio.ImageIO;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JFileChooser;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.SwingWorker;
+import javax.swing.table.DefaultTableModel;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Graphics2D;
+import java.awt.GridLayout;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
-import javax.swing.SwingConstants;
+import java.util.Map;
 
-public class BusinessOverviewPanel extends JPanel {
+/**
+ * Admin dashboard that summarises the shop's sales, profit, stock health and
+ * risks. All numbers come from {@link ReportService}; nothing is hard-coded.
+ * Data is loaded in a background thread and applied on the Swing thread.
+ */
+public class BusinessOverviewPanel extends JPanel implements Refreshable {
+
+    private static final String[] RANGES = {"Today", "Last 7 Days", "Last 30 Days", "This Month"};
+    private static final int NEAR_EXPIRY_DAYS = 7;
+    private static final int DEAD_STOCK_DAYS = 30;
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm");
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd MMM");
 
     private final ReportService reportService;
-    private final User user;
 
-    private JComboBox<String> dateRangeCombo;
-    private JButton refreshBtn;
-    private JLabel lastUpdatedLabel;
-    private JButton exportCsvBtn;
-    private JButton exportImageBtn;
+    private final JComboBox<String> rangeCombo = new JComboBox<>(RANGES);
+    private final JLabel lastUpdated = new JLabel(" ");
+    private final JButton refreshButton = Styles.createPrimaryButton("Refresh");
+    private final JButton exportCsvButton = Styles.createSecondaryButton("Export CSV");
+    private final JButton exportImageButton = Styles.createSecondaryButton("Export Image");
 
-    private Timer refreshTimer;
-    private LocalDate lastSelectedDate;
+    private final KpiTile revenueTile = new KpiTile("Revenue");
+    private final KpiTile profitTile = new KpiTile("Gross profit");
+    private final KpiTile salesCountTile = new KpiTile("Sales");
+    private final KpiTile averageTile = new KpiTile("Average sale");
+    private final KpiTile stockValueTile = new KpiTile("Stock value (at cost)");
+    private final KpiTile lowStockTile = new KpiTile("Low-stock products");
+    private final KpiTile nearExpiryTile = new KpiTile("Near expiry (" + NEAR_EXPIRY_DAYS + " days)");
+    private final KpiTile expiredTile = new KpiTile("Expired batches");
 
-    private KpiTile[] kpiTiles;
-    private LineChartPanel salesTrendChart;
-    private BarChartPanel topProductsChart;
-    private DonutChartPanel paymentMethodsChart;
-    private DonutChartPanel stockHealthChart;
-    private BarChartPanel wastageByReasonChart;
-    private BarChartPanel profitVsMonthChart;
-    private BarChartPanel salesByHourChart;
+    private final LineChartPanel trendChart = new LineChartPanel();
+    private final BarChartPanel topProductsChart = new BarChartPanel();
+    private final DonutChartPanel paymentChart = new DonutChartPanel();
+    private final DonutChartPanel stockHealthChart = new DonutChartPanel();
+    private final BarChartPanel wastageChart = new BarChartPanel();
+    private final BarChartPanel monthlyChart = new BarChartPanel();
+    private final BarChartPanel hourlyChart = new BarChartPanel();
 
-    private JTable expiringSoonTable;
-    private JTable lowStockTable;
-    private JTable recentSalesTable;
-    private JTable recentActivityTable;
-    private JTable deadStockTable;
+    private final DefaultTableModel expiringModel = model("Product", "Batch", "Qty", "Expires");
+    private final DefaultTableModel lowStockModel = model("Product", "In stock", "Reorder at");
+    private final DefaultTableModel recentSalesModel = model("Sale", "Time", "Total", "Paid by");
+    private final DefaultTableModel deadStockModel = model("Product", "In stock");
 
-    // Card border for nice rounded corners with shadow effect
-    private static class CardBorder extends AbstractBorder {
-        private final int radius;
-        private final Color shadowColor;
-        private final int shadowGap;
+    private final JPanel content = new JPanel();
+    private Snapshot lastSnapshot;
+    private LocalDate rangeFrom = LocalDate.now();
+    private LocalDate rangeTo = LocalDate.now();
+    private boolean loading;
 
-        CardBorder(int radius, Color shadowColor, int shadowGap) {
-            this.radius = radius;
-            this.shadowColor = shadowColor;
-            this.shadowGap = shadowGap;
+    public BusinessOverviewPanel(ReportService reportService) {
+        if (reportService == null) {
+            throw new IllegalArgumentException("ReportService is required");
         }
-
-        @Override
-        public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(Theme.BORDER_LIGHT);
-            g2.fillRoundRect(x, y, width - 1, height - 1, radius, radius);
-            // Subtle bottom border
-            g2.setColor(Theme.ACCENT_SECONDARY);
-            g2.drawLine(x, height - 1, width - 1, height - 1);
-            g2.dispose();
-        }
-
-        @Override
-        public Insets getBorderInsets(Component c) {
-            return new Insets(radius + shadowGap, radius + shadowGap, radius + shadowGap, radius + shadowGap);
-        }
-
-        @Override
-        public Insets getBorderInsets(Component c, Insets insets) {
-            insets.left = radius + shadowGap;
-            insets.top = radius + shadowGap;
-            insets.right = radius + shadowGap;
-            insets.bottom = radius + shadowGap;
-            return insets;
-        }
-    }
-
-    // Card panel with shadow and rounded corners
-    private static class CardPanel extends JPanel {
-        private final int radius;
-
-        CardPanel(int radius) {
-            this.radius = radius;
-            setOpaque(false);
-            setLayout(new BorderLayout());
-            setPreferredSize(new Dimension(260, 140));
-            setMinimumSize(new Dimension(260, 140));
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            // Soft shadow
-            g2.setColor(new Color(0, 0, 0, 15));
-            g2.fillRoundRect(0, getHeight() / 2, getWidth(), getHeight() / 2, radius, radius);
-            // Card background
-            g2.setColor(Theme.BG_CARD);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
-            g2.dispose();
-            super.paintComponent(g);
-        }
-    }
-
-    // Professional KPI tile with better design
-    private static class KpiTile extends JPanel {
-        private final JLabel label;
-        private final JLabel valueLabel;
-        private final JLabel descriptionLabel;
-        private String changeDirection = "—";
-        private boolean isUpward = false;
-
-        public KpiTile(String labelText, String descriptionText) {
-            setLayout(new BorderLayout(0, 12));
-            setOpaque(false);
-            setPreferredSize(new Dimension(200, 100));
-            setMinimumSize(new Dimension(200, 100));
-            setCursor(new Cursor(Cursor.HAND_CURSOR));
-
-            // Mouse hover effects
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
-                    setBorder(new LineBorder(Theme.ACCENT_SECONDARY, 1, true));
-                }
-                @Override
-                public void mouseExited(MouseEvent e) {
-                    setBorder(null);
-                }
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    JOptionPane.showMessageDialog(BusinessOverviewPanel.this,
-                            "Opening related detail view", "Tile Action",
-                            JOptionPane.INFORMATION_MESSAGE);
-                }
-            });
-
-            // Top label
-            label = new JLabel(labelText);
-            label.setFont(Theme.FONT_SUBTITLE);
-            label.setForeground(Theme.TEXT_SECONDARY);
-            label.setHorizontalAlignment(SwingConstants.CENTER);
-            add(label, BorderLayout.NORTH);
-
-            // Center value
-            valueLabel = new JLabel("0");
-            valueLabel.setFont(Theme.FONT_KPI_VAL_BOLD);
-            valueLabel.setForeground(Theme.ACCENT_PRIMARY);
-            valueLabel.setHorizontalAlignment(SwingConstants.CENTER);
-            add(valueLabel, BorderLayout.CENTER);
-
-            // Description at bottom
-            descriptionLabel = new JLabel(descriptionText);
-            descriptionLabel.setFont(Theme.FONT_SMALL);
-            descriptionLabel.setForeground(Theme.FG_SIDEBAR_TEXT);
-            descriptionLabel.setHorizontalAlignment(SwingConstants.CENTER);
-            add(descriptionLabel, BorderLayout.SOUTH);
-        }
-
-        public void setValue(String value) {
-            valueLabel.setText(value);
-        }
-
-        public void setChange(String direction, boolean isUpward) {
-            this.changeDirection = direction;
-            this.isUpward = isUpward;
-            updateChangeVisual();
-        }
-
-        private void updateChangeVisual() {
-            if (isUpward) {
-                label.setForeground(Theme.ACCENT_POSITIVE);
-                descriptionLabel.setForeground(Theme.ACCENT_POSITIVE);
-            } else if (direction.equals("Down")) {
-                label.setForeground(Theme.ACCENT_NEGATIVE);
-                descriptionLabel.setForeground(Theme.ACCENT_NEGATIVE);
-            } else {
-                label.setForeground(Theme.TEXT_SECONDARY);
-                descriptionLabel.setForeground(Theme.FG_SIDEBAR_TEXT);
-            }
-        }
-    }
-
-    public BusinessOverviewPanel(ReportService reportService, User user) {
         this.reportService = reportService;
-        this.user = user;
         setLayout(new BorderLayout());
-        setBackground(Theme.BG_PAGE);
-        setBorder(new EmptyBorder(4, 24, 4, 24));
+        setBackground(Theme.BG_WINDOW);
+        add(buildToolbar(), BorderLayout.NORTH);
+        add(Styles.createScrollPane(buildContent()), BorderLayout.CENTER);
 
-        // ---- Top Bar ----
-        JPanel topBar = new JPanel(new BorderLayout(12, 0));
-        topBar.setBackground(Theme.BG_HEADER_NAVY);
-        topBar.setBorder(new EmptyBorder(16, 24, 16, 24));
-
-        // Title with icon-like text
-        JLabel titleLabel = new JLabel("Business Overview");
-        titleLabel.setFont(Theme.FONT_PAGE_TITLE);
-        titleLabel.setForeground(Color.WHITE);
-        topBar.add(titleLabel, BorderLayout.WEST);
-
-        // Date range selector - improved
-        JPanel datePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        datePanel.setOpaque(false);
-
-        String[] dateOptions = {"Today", "Last 7 Days", "Last 30 Days", "This Month", "Custom"};
-        dateRangeCombo = new JComboBox<>(dateOptions);
-        dateRangeCombo.setFont(Theme.FONT_SMALL);
-        dateRangeCombo.setBackground(new Color(0, 0, 0, 0));
-        dateRangeCombo.setForeground(Theme.TEXT_PRIMARY);
-        dateRangeCombo.addActionListener(e -> onDateRangeChanged());
-        datePanel.add(dateRangeCombo);
-
-        refreshBtn = new JButton("Refresh");
-        refreshBtn.setFont(Theme.FONT_BOLD);
-        refreshBtn.setForeground(Color.WHITE);
-        refreshBtn.setBackground(Theme.ACCENT_PRIMARY);
-        refreshBtn.setFocusPainted(false);
-        refreshBtn.addActionListener(e -> loadData());
-        datePanel.add(refreshBtn);
-
-        topBar.add(datePanel, BorderLayout.CENTER);
-
-        // Last updated label
-        lastUpdatedLabel = new JLabel("Last updated: just now");
-        lastUpdatedLabel.setFont(Theme.FONT_SUBTITLE);
-        lastUpdatedLabel.setForeground(Theme.FG_SIDEBAR_TEXT);
-        topBar.add(lastUpdatedLabel, BorderLayout.EAST);
-
-        // Export panel
-        JPanel exportPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        exportPanel.setOpaque(false);
-        exportCsvBtn = new JButton("Export Summary (CSV)");
-        exportCsvBtn.setFont(Theme.FONT_SMALL);
-        exportCsvBtn.setForeground(Color.WHITE);
-        exportCsvBtn.setBackground(Theme.ACCENT_SECONDARY);
-        exportCsvBtn.setFocusPainted(false);
-        exportCsvBtn.addActionListener(e -> exportCsv());
-        exportImageBtn = new JButton("Save as Image (PNG)");
-        exportImageBtn.setFont(Theme.FONT_SMALL);
-        exportImageBtn.setForeground(Color.WHITE);
-        exportImageBtn.setBackground(Theme.ACCENT_SECONDARY);
-        exportImageBtn.setFocusPainted(false);
-        exportImageBtn.addActionListener(e -> exportImage());
-        exportPanel.add(exportCsvBtn);
-        exportPanel.add(exportImageBtn);
-
-        topBar.add(exportPanel, BorderLayout.SOUTH);
-
-        add(topBar, BorderLayout.NORTH);
-
-        // ---- KPI Row ----
-        JPanel kpiPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 16, 0));
-        kpiPanel.setBackground(Theme.BG_PAGE);
-        kpiPanel.setBorder(new EmptyBorder(0, 24, 16, 24));
-
-        kpiTiles = new KpiTile[11];
-        String[] kpiLabels = {"Today's Sales", "This Month's Sales", "Today's Profit",
-                "This Month's Profit", "Stock Value", "Products", "Low Stock",
-                "Expired Stock", "Near-Expiry", "Sales Count", "Average Bill"};
-        String[] kpiDescriptions = {"Net sales for today", "Net sales for this month",
-                "Profit for today", "Profit for this month", "Total stock value (good + expired)",
-                "Active product count", "Low-stock product count", "Expired batch count and value",
-                "Near-expiry batch count", "Total number of sales", "Average bill value"};
-
-        // 3 cards per row with professional spacing
-        for (int i = 0; i < kpiTiles.length; i++) {
-            kpiTiles[i] = new KpiTile(kpiLabels[i], kpiDescriptions[i]);
-            kpiPanel.add(kpiTiles[i]);
-        }
-
-        add(kpiPanel, BorderLayout.CENTER);
-
-        // ---- Charts Area ----
-        JPanel chartsPanel = new JPanel(new GridLayout(2, 2, 20, 20));
-        chartsPanel.setBackground(Theme.BG_PAGE);
-        chartsPanel.setBorder(new EmptyBorder(0, 24, 0, 24));
-
-        // Card-style chart containers
-        JPanel chart1Card = createChartCard();
-        chart1Card.add(salesTrendChart = new LineChartPanel());
-
-        JPanel chart2Card = createChartCard();
-        chart2Card.add(topProductsChart = new BarChartPanel());
-
-        JPanel chart3Card = createChartCard();
-        chart3Card.add(paymentMethodsChart = new DonutChartPanel());
-
-        JPanel chart4Card = createChartCard();
-        chart4Card.add(stockHealthChart = new DonutChartPanel());
-
-        chartsPanel.add(chart1Card);
-        chartsPanel.add(chart2Card);
-        chartsPanel.add(chart3Card);
-        chartsPanel.add(chart4Card);
-
-        add(chartsPanel, BorderLayout.CENTER);
-
-        // ---- Tables Area ----
-        JPanel tablesPanel = new JPanel(new GridLayout(1, 4, 16, 16));
-        tablesPanel.setBackground(Theme.BG_PAGE);
-        tablesPanel.setBorder(new EmptyBorder(0, 24, 24, 24));
-
-        // Table style: alternating rows, proper formatting
-        expiringSoonTable = createStripedTable(new String[]{"Product", "Batch", "Qty", "Expiry", "Days Left"});
-        lowStockTable = createStripedTable(new String[]{"Product", "Current", "Threshold"});
-        recentSalesTable = createStripedTable(new String[]{"Sale ID", "Date", "Amount", "Payment"});
-        recentActivityTable = createStripedTable(new String[]{"Action", "User", "Details", "Time"});
-
-        tablesPanel.add(new JScrollPane(expiringSoonTable));
-        tablesPanel.add(new JScrollPane(lowStockTable));
-        tablesPanel.add(new JScrollPane(recentSalesTable));
-        tablesPanel.add(new JScrollPane(recentActivityTable));
-
-        add(tablesPanel, BorderLayout.SOUTH);
-
-        // Start auto-refresh
-        startAutoRefresh();
-        loadData();
+        rangeCombo.setSelectedItem("Last 30 Days");
+        rangeCombo.addActionListener(e -> refreshData());
+        refreshButton.addActionListener(e -> refreshData());
+        exportCsvButton.addActionListener(e -> exportCsv());
+        exportImageButton.addActionListener(e -> exportImage());
+        refreshData();
     }
 
-    // Create a professional card for charts
-    private JPanel createChartCard() {
-        JPanel card = new JPanel(new BorderLayout(8, 8));
-        card.setOpaque(false);
-        card.setBorder(new EmptyBorder(16, 16, 16, 16));
+    // ------------------------------------------------------------------
+    // Layout
+    // ------------------------------------------------------------------
+
+    private JPanel buildToolbar() {
+        JPanel bar = new JPanel(new BorderLayout());
+        bar.setBackground(Theme.BG_WINDOW);
+        bar.setBorder(BorderFactory.createEmptyBorder(Theme.PAGE_PADDING, Theme.PAGE_PADDING, 8, Theme.PAGE_PADDING));
+
+        JPanel titles = new JPanel();
+        titles.setOpaque(false);
+        titles.setLayout(new BoxLayout(titles, BoxLayout.Y_AXIS));
+        JLabel title = new JLabel("Business Overview");
+        title.setFont(Theme.FONT_PAGE_TITLE);
+        title.setForeground(Theme.TEXT_PRIMARY);
+        lastUpdated.setFont(Theme.FONT_SMALL);
+        lastUpdated.setForeground(Theme.TEXT_HINT);
+        titles.add(title);
+        titles.add(lastUpdated);
+        bar.add(titles, BorderLayout.WEST);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        actions.setOpaque(false);
+        Styles.styleComboBox(rangeCombo);
+        rangeCombo.setPreferredSize(new Dimension(140, Theme.INPUT_HEIGHT));
+        actions.add(rangeCombo);
+        actions.add(refreshButton);
+        actions.add(exportCsvButton);
+        actions.add(exportImageButton);
+        bar.add(actions, BorderLayout.EAST);
+        return bar;
+    }
+
+    private JPanel buildContent() {
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBackground(Theme.BG_WINDOW);
+        content.setBorder(BorderFactory.createEmptyBorder(0, Theme.PAGE_PADDING, Theme.PAGE_PADDING, Theme.PAGE_PADDING));
+
+        JPanel kpis = new JPanel(new GridLayout(2, 4, 12, 12));
+        kpis.setOpaque(false);
+        for (KpiTile t : new KpiTile[] {revenueTile, profitTile, salesCountTile, averageTile,
+                stockValueTile, lowStockTile, nearExpiryTile, expiredTile}) {
+            kpis.add(t);
+        }
+        addBlock(kpis);
+
+        JPanel charts = new JPanel(new GridLayout(0, 2, 12, 12));
+        charts.setOpaque(false);
+        charts.add(trendChart);
+        charts.add(topProductsChart);
+        charts.add(paymentChart);
+        charts.add(stockHealthChart);
+        charts.add(wastageChart);
+        charts.add(monthlyChart);
+        charts.add(hourlyChart);
+        addBlock(charts);
+
+        JPanel tables = new JPanel(new GridLayout(0, 2, 12, 12));
+        tables.setOpaque(false);
+        tables.add(tableCard("Expiring soon", expiringModel));
+        tables.add(tableCard("Needs reordering", lowStockModel));
+        tables.add(tableCard("Recent sales", recentSalesModel));
+        tables.add(tableCard("Not sold in " + DEAD_STOCK_DAYS + " days", deadStockModel));
+        addBlock(tables);
+        return content;
+    }
+
+    private void addBlock(JPanel block) {
+        block.setAlignmentX(Component.LEFT_ALIGNMENT);
+        content.add(block);
+        content.add(Box.createVerticalStrut(12));
+    }
+
+    private JPanel tableCard(String title, DefaultTableModel model) {
+        JPanel card = Styles.createCard();
+        card.setLayout(new BorderLayout(0, 8));
+        card.add(Styles.createSectionTitle(title), BorderLayout.NORTH);
+        JTable table = new JTable(model);
+        Styles.styleTable(table);
+        table.setEnabled(false);
+        if (model.getColumnName(0).equals("Sale")) {
+            table.getColumnModel().getColumn(0).setPreferredWidth(210);
+        }
+        JScrollPane scroll = Styles.createScrollPane(table);
+        scroll.getViewport().setBackground(Color.WHITE);
+        scroll.setPreferredSize(new Dimension(300, 190));
+        card.add(scroll, BorderLayout.CENTER);
         return card;
     }
 
-    // Create a striped table with professional styling
-    private JTable createStripedTable(String[] columnNames) {
-        DefaultTableModel model = new DefaultTableModel(columnNames, 0) {
+    private static DefaultTableModel model(String... columns) {
+        return new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
             }
         };
+    }
 
-        // Add sample rows
-        if (columnNames[0].equals("Product")) {
-            model.addRow(new Object[]{"Product A", "BATCH-001", 5, "25 Oct 2026", "3"});
-            model.addRow(new Object[]{"Product B", "BATCH-002", 3, "28 Oct 2026", "6"});
-        } else if (columnNames[0].equals("Sale ID")) {
-            model.addRow(new Object[]{"SALE-20261031-1", "25 Oct 2026", "Rs. 750.00", "Cash"});
-            model.addRow(new Object[]{"SALE-20261031-2", "24 Oct 2026", "Rs. 1,200.00", "Card"});
-        } else if (columnNames[0].equals("Action")) {
-            model.addRow(new Object[]{"Stock Adjustment", "admin", "Adjusted batch B-001 by +5 units", "25 Oct 2026, 14:30"});
-            model.addRow(new Object[]{"Price Update", "admin", "Product PROD-01 price updated to Rs. 250.00", "25 Oct 2026, 14:00"});
-        } else {
-            model.addRow(new Object[]{"Owner Withdrawal", "admin", "Rs. 5,000.00 capital withdrawal", "25 Oct 2026, 10:15"});
-            model.addRow(new Object[]{"Supplier Payment", "admin", "SUP-TEST-01 paid Rs. 6,000.00", "24 Oct 2026, 16:45"});
+    // ------------------------------------------------------------------
+    // Loading data (background thread -> Swing thread)
+    // ------------------------------------------------------------------
+
+    @Override
+    public void refreshData() {
+        if (loading) {
+            return;
         }
+        loading = true;
+        refreshButton.setEnabled(false);
+        final String selected = (String) rangeCombo.getSelectedItem();
+        final LocalDate today = LocalDate.now();
+        final LocalDate from = rangeStart(selected, today);
+        rangeFrom = from;
+        rangeTo = today;
 
-        JTable table = new JTable(model);
-        table.setBackground(Theme.BG_CARD);
-        table.setForeground(Theme.TEXT_PRIMARY);
-        table.setSelectionBackground(Theme.ACCENT_PRIMARY);
-        table.setSelectionForeground(Color.WHITE);
-        table.setFont(Theme.FONT_TABLE_CELL);
-        table.setRowHeight(28);
-        table.setIntercellSpacing(new Dimension(8, 4));
-
-        // Professional header
-        JTableHeader header = table.getTableHeader();
-        header.setFont(Theme.FONT_TABLE_HEADER);
-        header.setBackground(Theme.BG_TABLE_HEADER);
-        header.setForeground(Theme.FG_TABLE_HEADER_TEXT);
-        header.setReorderingAllowed(false);
-
-        // Alternating row colors - rendered via custom renderer
-        table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+        new SwingWorker<Snapshot, Void>() {
             @Override
-            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                if (!isSelected) {
-                    setBackground(row % 2 == 0 ? Theme.BG_CARD : Color.WHITE);
-                    setForeground(Theme.TEXT_PRIMARY);
-                }
-                return c;
+            protected Snapshot doInBackground() {
+                return loadSnapshot(from, today);
             }
-        });
 
-        return table;
-    }
-
-    private void onDateRangeChanged() {
-        String selected = (String) dateRangeCombo.getSelectedItem();
-        LocalDate today = LocalDate.now();
-
-        if (selected.equals("Today")) {
-            lastSelectedDate = today;
-        } else if (selected.equals("Last 7 Days")) {
-            lastSelectedDate = today.minusDays(7);
-        } else if (selected.equals("Last 30 Days")) {
-            lastSelectedDate = today.minusDays(30);
-        } else if (selected.equals("This Month")) {
-            lastSelectedDate = today.withDayOfMonth(1);
-        } else if (selected.equals("Custom")) {
-            lastSelectedDate = today;
-        }
-
-        loadData();
-    }
-
-    private void loadData() {
-        new SwingWorker<Void, Void>() {
             @Override
-            protected Void doInBackground() {
-                // KPI tiles
-                if (kpiTiles != null) {
-                    LocalDate today = LocalDate.now();
-                    LocalDate yesterday = today.minusDays(1);
-                    BigDecimal todaySales = reportService.getSalesTotalForDate(today);
-                    BigDecimal yesterdaySales = reportService.getSalesTotalForDate(yesterday);
-
-                    kpiTiles[0].setValue(todaySales.stripTrailingZeros().toPlainString());
-                    String vsText = yesterdaySales.compareTo(BigDecimal.ZERO) == 0 ? "New"
-                            : todaySales.compareTo(yesterdaySales) > 0 ? "Up" : "Down";
-                    kpiTiles[0].setChange(vsText, todaySales.compareTo(yesterdaySales) > 0);
-
-                    // This month's sales
-                    BigDecimal monthSales = BigDecimal.ZERO;
-                    for (Sale s : reportService.getSalesHistory()) {
-                        if (s.getSaleDateTime().toLocalDate().isAfter(today.withDayOfMonth(1))
-                                && s.getSaleDateTime().toLocalDate().isBefore(today.plusMonths(1))) {
-                            monthSales = monthSales.add(s.getTotalAmount());
-                        }
-                    }
-                    kpiTiles[1].setValue(monthSales.stripTrailingZeros().toPlainString());
-
-                    // Today's profit
-                    kpiTiles[2].setValue(todaySales.stripTrailingZeros().toPlainString());
-                    kpiTiles[2].setChange("—", false);
-
-                    // This month's profit
-                    kpiTiles[3].setValue(monthSales.stripTrailingZeros().toPlainString());
-                    kpiTiles[3].setChange("—", false);
-
-                    // Stock value (simplified)
-                    kpiTiles[4].setValue("Rs. 42,500.00");
-                    kpiTiles[5].setValue(String.valueOf(reportService.getTotalProductCount()));
-                    kpiTiles[6].setValue(String.valueOf(reportService.getLowStockCount()));
-                    kpiTiles[7].setValue(String.valueOf(reportService.getExpiredBatchCount()) + " batches");
-                    kpiTiles[8].setValue(String.valueOf(reportService.getNearExpiryBatchCount(7)) + " batches");
-                    kpiTiles[9].setValue(String.valueOf(reportService.getSalesHistory().size()));
-                    kpiTiles[10].setValue("Rs. 850.00");
+            protected void done() {
+                loading = false;
+                refreshButton.setEnabled(true);
+                try {
+                    lastSnapshot = get();
+                    apply(lastSnapshot, selected);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(BusinessOverviewPanel.this,
+                            "Could not load the overview: " + rootMessage(ex),
+                            "Business Overview", JOptionPane.ERROR_MESSAGE);
                 }
-
-                // Sales trend chart
-                List<LocalDate> dates = new ArrayList<>();
-                List<BigDecimal> salesValues = new ArrayList<>();
-                for (int i = 0; i < 30; i++) {
-                    LocalDate d = today.minusDays(i);
-                    dates.add(0, d);
-                    salesValues.add(0, reportService.getDailySales(d, d).getOrDefault(d, BigDecimal.ZERO));
-                }
-                salesTrendChart.setData("Sales Trend", "Last 30 Days",
-                        dates, salesValues, null);
-
-                // Top products
-                List<String> prodNames = new ArrayList<>();
-                List<BigDecimal> prodRevenues = new ArrayList<>();
-                for (Product p : reportService.getTopProducts(LocalDate.now().minusDays(30), LocalDate.now(), 5)) {
-                    prodNames.add(p.getProductName());
-                    prodRevenues.add(p.getRevenue());
-                }
-                topProductsChart.setData("Top 5 Products", "", prodNames, prodRevenues, null, BarChartPanel.Mode.VERTICAL);
-
-                // Payment methods donut
-                Map<String, BigDecimal> paymentMap = reportService.getSalesByPaymentMethod(LocalDate.now().minusDays(30), LocalDate.now());
-                List<String> payNames = new ArrayList<>(paymentMap.keySet());
-                List<BigDecimal> payValues = new ArrayList<>(paymentMap.values());
-                List<Color> payColors = new ArrayList<>();
-                for (int i = 0; i < payNames.size(); i++) {
-                    payColors.add(Theme.ACCENT_PRIMARY);
-                }
-                paymentMethodsChart.setData("Payment Methods", "Last 30 Days", payNames, payValues, payColors, null);
-
-                // Stock health donut
-                StockHealth health = reportService.getStockHealth(LocalDate.now());
-                List<String> healthNames = Arrays.asList("Good", "Near-Expiry", "Expired");
-                List<BigDecimal> healthValues = Arrays.asList(
-                        BigDecimal.valueOf(health.getGoodQuantity()),
-                        BigDecimal.valueOf(health.getNearExpiryQuantity()),
-                        BigDecimal.valueOf(health.getExpiredQuantity())
-                );
-                List<Color> healthColors = Arrays.asList(
-                        Color.decode("#10b981"), new Color(234, 179, 8),
-                        Color.decode("#ef4444")
-                );
-                stockHealthChart.setData("Stock Health", "As of " + LocalDate.now(), healthNames, healthValues, healthColors, null);
-
-                // Wastage by reason
-                Map<String, BigDecimal> wastageMap = reportService.getWastageByReason(LocalDate.now().minusDays(30), LocalDate.now());
-                List<String> reasonNames = new ArrayList<>(wastageMap.keySet());
-                List<BigDecimal> reasonValues = new ArrayList<>(wastageMap.values());
-                wastageByReasonChart.setData("Wastage by Reason", "Last 30 Days", reasonNames, reasonValues, null, BarChartPanel.Mode.VERTICAL);
-
-                // Profit vs Month
-                List<MonthlyRow> monthlyRows = reportService.getMonthlySalesAndProfit(6);
-                List<String> monthNames = new ArrayList<>();
-                List<BigDecimal> profitValues = new ArrayList<>();
-                for (MonthlyRow row : monthlyRows) {
-                    monthNames.add(row.getMonthLabel());
-                    profitValues.add(row.getProfit());
-                }
-                profitVsMonthChart.setData("Sales vs Profit", "Last 6 Months", monthNames, profitValues, null, BarChartPanel.Mode.GROUPED);
-
-                // Sales by hour
-                Map<Integer, BigDecimal> hourMap = reportService.getSalesByHour(LocalDate.now().minusDays(30), LocalDate.now());
-                List<String> hourLabels = new ArrayList<>();
-                List<BigDecimal> hourValues = new ArrayList<>();
-                for (int i = 0; i < 24; i++) {
-                    hourLabels.add(String.format("%02d:00", i));
-                    hourValues.add(hourMap.getOrDefault(i, BigDecimal.ZERO));
-                }
-                salesByHourChart.setData("Sales by Hour", "Last 30 Days", hourLabels, hourValues, null, BarChartPanel.Mode.VERTICAL);
-
-                return null;
             }
         }.execute();
     }
 
-    private void startAutoRefresh() {
-        refreshTimer = new Timer();
-        refreshTimer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                loadData();
-                LocalDate today = LocalDate.now();
-                lastUpdatedLabel.setText("Last updated: " + today + ", " + LocalTime.now().format(DateTimeFormatter.ofPattern("hh:mm aa")));
-            }
-        }, 60000, 60000);
+    private static LocalDate rangeStart(String selected, LocalDate today) {
+        if ("Today".equals(selected)) {
+            return today;
+        }
+        if ("Last 7 Days".equals(selected)) {
+            return today.minusDays(6);
+        }
+        if ("This Month".equals(selected)) {
+            return today.withDayOfMonth(1);
+        }
+        return today.minusDays(29);
     }
 
+    private Snapshot loadSnapshot(LocalDate from, LocalDate to) {
+        reportService.refreshData();
+        Snapshot s = new Snapshot();
+        s.from = from;
+        s.to = to;
+        s.revenue = reportService.getRevenueForRange(from, to);
+        s.profit = reportService.getGrossProfitForRange(from, to);
+        s.average = reportService.getAverageSaleValue(from, to);
+        s.salesCount = countSales(from, to);
+        s.stockValue = reportService.getStockValueAtCost();
+        s.lowStock = reportService.getLowStockCount();
+        s.nearExpiry = reportService.getNearExpiryBatchCount(NEAR_EXPIRY_DAYS);
+        s.expired = reportService.getExpiredBatchCount();
+
+        LocalDate trendFrom = from.isAfter(to.minusDays(6)) ? to.minusDays(6) : from;
+        s.trendFrom = trendFrom;
+        s.dailySales = reportService.getDailySales(trendFrom, to);
+        s.topProducts = reportService.getTopProducts(from, to, 5);
+        s.byPayment = reportService.getSalesByPaymentMethod(from, to);
+        s.health = reportService.getStockHealth(to, NEAR_EXPIRY_DAYS);
+        s.wastage = reportService.getWastageByReason(from, to);
+        s.monthly = reportService.getMonthlySalesAndProfit(6);
+        s.byHour = reportService.getSalesByHour(from, to);
+
+        s.reorder = reportService.getReorderList();
+        s.recentSales = recentSales(10);
+        s.dead = reportService.getDeadStock(DEAD_STOCK_DAYS);
+        s.expiring = expiringBatches();
+        s.loadedAt = LocalDateTime.now();
+        return s;
+    }
+
+    private int countSales(LocalDate from, LocalDate to) {
+        int n = 0;
+        for (Sale sale : reportService.getSalesHistory()) {
+            LocalDate d = sale.getSaleDateTime().toLocalDate();
+            if (!d.isBefore(from) && !d.isAfter(to)
+                    && sale.getPaymentStatus() == shelflife.model.PaymentStatus.PAID) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private List<Sale> recentSales(int limit) {
+        List<Sale> all = new ArrayList<>(reportService.getSalesHistory());
+        all.sort((a, b) -> b.getSaleDateTime().compareTo(a.getSaleDateTime()));
+        return all.size() > limit ? new ArrayList<>(all.subList(0, limit)) : all;
+    }
+
+    private List<ProductBatch> expiringBatches() {
+        LocalDate today = LocalDate.now();
+        LocalDate limit = today.plusDays(NEAR_EXPIRY_DAYS);
+        List<ProductBatch> list = new ArrayList<>();
+        for (ProductBatch b : reportService.getStockInformation()) {
+            if (b.getQuantity() > 0 && !b.isRecalled() && !b.getExpiryDate().isBefore(today)
+                    && !b.getExpiryDate().isAfter(limit)) {
+                list.add(b);
+            }
+        }
+        list.sort((a, b) -> a.getExpiryDate().compareTo(b.getExpiryDate()));
+        return list;
+    }
+
+    // ------------------------------------------------------------------
+    // Showing data
+    // ------------------------------------------------------------------
+
+    private void apply(Snapshot s, String rangeName) {
+        revenueTile.set(CurrencyUtil.format(s.revenue), rangeName);
+        profitTile.set(CurrencyUtil.format(s.profit), marginText(s));
+        salesCountTile.set(String.valueOf(s.salesCount), rangeName);
+        averageTile.set(CurrencyUtil.format(s.average), "per paid sale");
+        stockValueTile.set(CurrencyUtil.format(s.stockValue), "on-hand units x cost");
+        lowStockTile.set(String.valueOf(s.lowStock), "products at or below threshold");
+        nearExpiryTile.set(String.valueOf(s.nearExpiry), "batches");
+        expiredTile.set(String.valueOf(s.expired), "batches");
+
+        List<String> days = new ArrayList<>();
+        List<BigDecimal> dayValues = new ArrayList<>();
+        for (Map.Entry<LocalDate, BigDecimal> e : s.dailySales.entrySet()) {
+            days.add(e.getKey().format(DAY));
+            dayValues.add(e.getValue());
+        }
+        trendChart.setData("Daily sales", s.trendFrom.format(DAY) + " - " + s.to.format(DAY), days, dayValues);
+
+        List<String> names = new ArrayList<>();
+        List<BigDecimal> revenues = new ArrayList<>();
+        for (ProductSales p : s.topProducts) {
+            names.add(p.getProductName());
+            revenues.add(p.getRevenue());
+        }
+        topProductsChart.setData("Top products by revenue", rangeName, names, revenues);
+
+        paymentChart.setData("Payment methods", rangeName,
+                new ArrayList<>(s.byPayment.keySet()), new ArrayList<>(s.byPayment.values()));
+        paymentChart.setCenterCaption("PKR");
+
+        stockHealthChart.setData("Stock health", "units on hand",
+                java.util.Arrays.asList("Good", "Near expiry", "Expired / recalled"),
+                java.util.Arrays.asList(BigDecimal.valueOf(s.health.getGoodQuantity()),
+                        BigDecimal.valueOf(s.health.getNearExpiryQuantity()),
+                        BigDecimal.valueOf(s.health.getExpiredQuantity())),
+                java.util.Arrays.asList(Color.decode("#10B981"), Color.decode("#F59E0B"), Color.decode("#EF4444")));
+        stockHealthChart.setCenterCaption("units");
+
+        wastageChart.setData("Wastage by reason", rangeName + " (units)",
+                new ArrayList<>(s.wastage.keySet()), new ArrayList<>(s.wastage.values()));
+
+        List<String> months = new ArrayList<>();
+        List<BigDecimal> monthRevenue = new ArrayList<>();
+        List<BigDecimal> monthProfit = new ArrayList<>();
+        for (MonthlyRow r : s.monthly) {
+            months.add(r.getMonthLabel());
+            monthRevenue.add(r.getRevenue());
+            monthProfit.add(r.getProfit().max(BigDecimal.ZERO));
+        }
+        monthlyChart.setGroupedData("Revenue vs profit", "last 6 months", months,
+                monthRevenue, monthProfit, "Revenue", "Profit");
+
+        List<String> hours = new ArrayList<>();
+        List<BigDecimal> hourValues = new ArrayList<>();
+        for (int h = 0; h < 24; h++) {
+            hours.add(String.format("%02d", h));
+            BigDecimal v = s.byHour.get(h);
+            hourValues.add(v == null ? BigDecimal.ZERO : v);
+        }
+        hourlyChart.setData("Sales by hour of day", rangeName, hours, hourValues);
+
+        fill(expiringModel, s.expiring.size(), i -> {
+            ProductBatch b = s.expiring.get(i);
+            Product p = reportService.getProductById(b.getProductId());
+            return new Object[] {p == null ? b.getProductId() : p.getName(), b.getBatchId(),
+                    b.getQuantity(), b.getExpiryDate().toString()};
+        });
+        fill(lowStockModel, s.reorder.size(), i -> {
+            Product p = s.reorder.get(i);
+            return new Object[] {p.getName(), stockOf(p), p.getLowStockThreshold()};
+        });
+        fill(recentSalesModel, s.recentSales.size(), i -> {
+            Sale sale = s.recentSales.get(i);
+            return new Object[] {sale.getSaleId(), sale.getSaleDateTime().format(TIME),
+                    CurrencyUtil.format(sale.getTotalAmount()),
+                    sale.getPaymentMethod() == null ? "-" : sale.getPaymentMethod().getDisplayName()};
+        });
+        fill(deadStockModel, s.dead.size(), i -> {
+            Product p = s.dead.get(i);
+            return new Object[] {p.getName(), stockOf(p)};
+        });
+
+        lastUpdated.setText("Updated " + s.loadedAt.format(TIME) + "  |  "
+                + s.from.format(DAY) + " - " + s.to.format(DAY));
+        revalidate();
+        repaint();
+    }
+
+    private int stockOf(Product p) {
+        int total = 0;
+        for (ProductBatch b : reportService.getStockInformation()) {
+            if (p.getProductId().equals(b.getProductId())) {
+                total += b.getQuantity();
+            }
+        }
+        return total;
+    }
+
+    private static String marginText(Snapshot s) {
+        if (s.revenue.signum() <= 0) {
+            return "no sales yet";
+        }
+        BigDecimal margin = s.profit.multiply(BigDecimal.valueOf(100))
+                .divide(s.revenue, 1, java.math.RoundingMode.HALF_UP);
+        return margin.toPlainString() + "% margin";
+    }
+
+    private interface RowBuilder {
+        Object[] row(int index);
+    }
+
+    private static void fill(DefaultTableModel model, int count, RowBuilder builder) {
+        model.setRowCount(0);
+        for (int i = 0; i < count; i++) {
+            model.addRow(builder.row(i));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Exports
+    // ------------------------------------------------------------------
+
     private void exportCsv() {
+        if (lastSnapshot == null) {
+            JOptionPane.showMessageDialog(this, "Nothing to export yet. Please refresh first.",
+                    "Export CSV", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
         JFileChooser chooser = new JFileChooser();
         chooser.setSelectedFile(new File("business_overview_" + LocalDate.now() + ".csv"));
-        int result = chooser.showSaveDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            JOptionPane.showMessageDialog(this,
-                    "Export functionality would save data to: " + chooser.getSelectedFile(),
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File target = chooser.getSelectedFile();
+        try (PrintWriter out = new PrintWriter(new OutputStreamWriter(
+                Files.newOutputStream(target.toPath()), StandardCharsets.UTF_8))) {
+            out.print('\uFEFF');
+            Snapshot s = lastSnapshot;
+            out.println("Business overview," + csv(s.from + " to " + s.to));
+            out.println("Revenue," + s.revenue.toPlainString());
+            out.println("Gross profit," + s.profit.toPlainString());
+            out.println("Paid sales," + s.salesCount);
+            out.println("Average sale," + s.average.toPlainString());
+            out.println("Stock value at cost," + s.stockValue.toPlainString());
+            out.println();
+            out.println("Date,Sales");
+            for (Map.Entry<LocalDate, BigDecimal> e : s.dailySales.entrySet()) {
+                out.println(e.getKey() + "," + e.getValue().toPlainString());
+            }
+            out.println();
+            out.println("Product,Units sold,Revenue,Profit");
+            for (ProductSales p : s.topProducts) {
+                out.println(csv(p.getProductName()) + "," + p.getQuantity() + ","
+                        + p.getRevenue().toPlainString() + "," + p.getProfit().toPlainString());
+            }
+            out.flush();
+            JOptionPane.showMessageDialog(this, "Saved to " + target.getAbsolutePath(),
                     "Export CSV", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this, "Could not save the file: " + ex.getMessage(),
+                    "Export CSV", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void exportImage() {
         JFileChooser chooser = new JFileChooser();
         chooser.setSelectedFile(new File("business_overview_" + LocalDate.now() + ".png"));
-        int result = chooser.showSaveDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            JOptionPane.showMessageDialog(this,
-                    "Chart export would save visualization to: " + chooser.getSelectedFile(),
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File target = chooser.getSelectedFile();
+        try {
+            Dimension size = content.getSize();
+            BufferedImage image = new BufferedImage(Math.max(1, size.width), Math.max(1, size.height),
+                    BufferedImage.TYPE_INT_RGB);
+            Graphics2D g2 = image.createGraphics();
+            try {
+                g2.setColor(Theme.BG_WINDOW);
+                g2.fillRect(0, 0, image.getWidth(), image.getHeight());
+                content.paint(g2);
+            } finally {
+                g2.dispose();
+            }
+            ImageIO.write(image, "png", target);
+            JOptionPane.showMessageDialog(this, "Saved to " + target.getAbsolutePath(),
                     "Export Image", JOptionPane.INFORMATION_MESSAGE);
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(this, "Could not save the image: " + ex.getMessage(),
+                    "Export Image", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    // User class placeholder
-    public static class User {
-        private final String name;
-        private final String role;
+    private static String csv(String value) {
+        String v = value == null ? "" : value;
+        return "\"" + v.replace("\"", "\"\"") + "\"";
+    }
 
-        public User(String name, String role) {
-            this.name = name;
-            this.role = role;
+    private static String rootMessage(Throwable t) {
+        Throwable cur = t;
+        while (cur.getCause() != null) {
+            cur = cur.getCause();
+        }
+        return cur.getMessage() == null ? cur.getClass().getSimpleName() : cur.getMessage();
+    }
+
+    // ------------------------------------------------------------------
+    // Small helper types
+    // ------------------------------------------------------------------
+
+    /** Everything the screen shows, gathered off the Swing thread. */
+    private static final class Snapshot {
+        LocalDate from;
+        LocalDate to;
+        LocalDate trendFrom;
+        LocalDateTime loadedAt;
+        BigDecimal revenue;
+        BigDecimal profit;
+        BigDecimal average;
+        BigDecimal stockValue;
+        int salesCount;
+        int lowStock;
+        int nearExpiry;
+        int expired;
+        Map<LocalDate, BigDecimal> dailySales;
+        List<ProductSales> topProducts;
+        Map<String, BigDecimal> byPayment;
+        StockHealth health;
+        Map<String, BigDecimal> wastage;
+        List<MonthlyRow> monthly;
+        Map<Integer, BigDecimal> byHour;
+        List<Product> reorder;
+        List<Sale> recentSales;
+        List<Product> dead;
+        List<ProductBatch> expiring;
+    }
+
+    /** One number with a caption, shown as a card. */
+    private static final class KpiTile extends JPanel {
+        private final JLabel value = new JLabel("-");
+        private final JLabel hint = new JLabel(" ");
+
+        KpiTile(String title) {
+            setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+            setBackground(Color.WHITE);
+            setBorder(BorderFactory.createCompoundBorder(
+                    new Styles.RoundedBorder(Theme.BORDER_LIGHT, 1, Theme.CORNER_RADIUS),
+                    BorderFactory.createEmptyBorder(12, 14, 12, 14)));
+            JLabel caption = new JLabel(title);
+            caption.setFont(Theme.FONT_SUBTITLE);
+            caption.setForeground(Theme.TEXT_SECONDARY);
+            value.setFont(Theme.FONT_PAGE_TITLE);
+            value.setForeground(Theme.TEXT_PRIMARY);
+            hint.setFont(Theme.FONT_SMALL);
+            hint.setForeground(Theme.TEXT_HINT);
+            add(caption);
+            add(Box.createVerticalStrut(4));
+            add(value);
+            add(Box.createVerticalStrut(2));
+            add(hint);
         }
 
-        public String getName() { return name; }
-        public String getRole() { return role; }
+        void set(String text, String note) {
+            value.setText(text);
+            hint.setText(note == null || note.isEmpty() ? " " : note);
+        }
     }
 }

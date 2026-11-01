@@ -57,7 +57,7 @@ public class LoginDialog extends JDialog {
         pnlTop.setBackground(Theme.BG_WINDOW);
         pnlTop.setBorder(new EmptyBorder(22, 30, 8, 30));
 
-        JLabel lblTitle = new JLabel("📦 ShelfLife");
+        JLabel lblTitle = new JLabel("ShelfLife");
         lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 24));
         lblTitle.setForeground(Theme.ACCENT_PRIMARY);
         lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -262,6 +262,15 @@ public class LoginDialog extends JDialog {
 
         try {
             User user = authService.login(username, password);
+            // If user must change password on first login, prompt before granting access
+            if (user.isMustChangePassword()) {
+                boolean changed = ChangePasswordDialog.requireChange(this, authService, user);
+                if (!changed) {
+                    lblError.setForeground(Theme.COLOR_DANGER_FG);
+                    lblError.setText("You must change your password to continue.");
+                    return;
+                }
+            }
             this.authenticatedUser = user;
             dispose();
         } catch (Exception ex) {

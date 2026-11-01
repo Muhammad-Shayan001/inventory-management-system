@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ShelfLife" default="default" basedir=".">
+    <description>ShelfLife - Inventory, Expiry &amp; Billing Management System</description>
+    <import file="nbproject/build-impl.xml" optional="true"/>
+    
+    <target name="default" depends="compile"/>
+
+    <target name="init">
+        <mkdir dir="build/classes"/>
+        <mkdir dir="dist"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="src" destdir="build/classes" source="1.8" target="1.8" includeantruntime="false" encoding="UTF-8">
+            <classpath>
+                <pathelement location="build/classes"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="jar" depends="compile">
+        <jar destfile="dist/ShelfLife.jar" basedir="build/classes">
+            <manifest>
+                <attribute name="Main-Class" value="shelflife.ui.ShelfLifeApp"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="run" depends="compile">
+        <java classname="shelflife.ui.ShelfLifeApp" fork="true">
+            <classpath>
+                <pathelement location="build/classes"/>
+            </classpath>
+        </java>
+    </target>
+
+    <target name="test" depends="compile">
+        <mkdir dir="build/test/classes"/>
+        <javac srcdir="test" destdir="build/test/classes" source="1.8" target="1.8" includeantruntime="false" encoding="UTF-8">
+            <classpath>
+                <pathelement location="build/classes"/>
+            </classpath>
+        </javac>
+        <java classname="shelflife.test.SystemAuditTestSuite" fork="true">
+            <classpath>
+                <pathelement location="build/classes"/>
+                <pathelement location="build/test/classes"/>
+            </classpath>
+        </java>
+    </target>
+
+    <target name="clean">
+        <delete dir="build"/>
+        <delete dir="dist"/>
+    </target>
+</project>

@@ -155,5 +155,14 @@ public final class Theme {
         UIManager.put("TabbedPane.foreground", TEXT_PRIMARY);
         UIManager.put("TabbedPane.selected", Color.WHITE);
         UIManager.put("TabbedPane.contentBorderInsets", new Insets(8, 0, 0, 0));
+        UIManager.put("TabbedPane.tabInsets", new Insets(7, 14, 7, 14));
+
+        // Suppress rectangular focus/border boxes on JLabel and components (Windows LAF)
+        UIManager.put("Label.border", BorderFactory.createEmptyBorder());
+        UIManager.put("Button.focus", new Color(0, 0, 0, 0));
+        UIManager.put("TabbedPane.focusColor", new Color(0, 0, 0, 0));
+        UIManager.put("TabbedPane.focus", new Color(0, 0, 0, 0));
+        UIManager.put("Table.focusCellHighlightBorder", BorderFactory.createEmptyBorder(1, 1, 1, 1));
+        UIManager.put("ScrollBar.width", 8);
     }
 }

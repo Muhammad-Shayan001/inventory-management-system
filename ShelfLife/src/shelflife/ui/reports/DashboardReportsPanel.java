@@ -68,8 +68,11 @@ public class DashboardReportsPanel extends JPanel implements Refreshable {
     private JTable tblCashFlow;
     private DefaultTableModel modelCashFlow;
 
-    // Investment Recovery summary labels
-    private JTextArea txtInvestmentRecovery;
+    // Investment Recovery structured statement labels
+    private JLabel valCapContrib, valOwnerWithdr, valNetCapital;
+    private JLabel valStockPurch, valInvRemaining, valCogsInv;
+    private JLabel valRevenue, valCogsProfit, valGrossProfit, valExpensesP, valNetProfit;
+    private JLabel valCashColl, valCustKhata, valSupplierPay, valCashBal;
 
     public DashboardReportsPanel(ReportService reportService) {
         this(reportService, null, null, null, null);
@@ -236,42 +239,152 @@ public class DashboardReportsPanel extends JPanel implements Refreshable {
     }
 
     private JPanel createInvestmentRecoveryTab() {
-        JPanel panel = new JPanel(new BorderLayout(12, 12));
-        panel.setOpaque(false);
-        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
+        JPanel outer = new JPanel(new BorderLayout(0, 0));
+        outer.setOpaque(false);
+        outer.setBorder(new EmptyBorder(12, 12, 12, 12));
 
-        txtInvestmentRecovery = new JTextArea();
-        txtInvestmentRecovery.setEditable(false);
-        txtInvestmentRecovery.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
-        txtInvestmentRecovery.setBackground(UITheme.CARD_BG);
-        txtInvestmentRecovery.setForeground(UITheme.TEXT_MAIN);
-        txtInvestmentRecovery.setBorder(new EmptyBorder(14, 16, 14, 16));
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBackground(UITheme.CARD_BG);
+        content.setBorder(new EmptyBorder(16, 20, 16, 20));
 
-        JScrollPane scroll = new JScrollPane(txtInvestmentRecovery);
+        // Section 1 – Capital
+        content.add(investSectionHeader("1.  EQUITY & CAPITAL POSITION", new Color(0x1E40AF)));
+        JPanel sec1 = new JPanel(new GridBagLayout());
+        sec1.setOpaque(false);
+        valCapContrib  = investStatRow(sec1, 0, "Total Capital Contributed by Owner",         "Rs. 0.00", false, new Color(0x374151));
+        valOwnerWithdr = investStatRow(sec1, 1, "Owner Withdrawals / Personal Drawings",       "Rs. 0.00", false, new Color(0xDC2626));
+        valNetCapital  = investStatRow(sec1, 2, "NET CAPITAL INTRODUCED",                      "Rs. 0.00", true,  new Color(0x1E40AF));
+        content.add(sec1);
+        content.add(Box.createVerticalStrut(14));
+
+        // Section 2 – Inventory
+        content.add(investSectionHeader("2.  INVENTORY INVESTMENT & RECOVERY", new Color(0x0369A1)));
+        JPanel sec2 = new JPanel(new GridBagLayout());
+        sec2.setOpaque(false);
+        valStockPurch   = investStatRow(sec2, 0, "Total Stock Purchases (Goods In)",           "Rs. 0.00", false, new Color(0x374151));
+        valInvRemaining = investStatRow(sec2, 1, "Inventory Remaining at Cost (Unsold)",       "Rs. 0.00", false, new Color(0x374151));
+        valCogsInv      = investStatRow(sec2, 2, "Investment Consumed Through Sales (COGS)",   "Rs. 0.00", true,  new Color(0xD97706));
+        content.add(sec2);
+        content.add(Box.createVerticalStrut(14));
+
+        // Section 3 – Profitability
+        content.add(investSectionHeader("3.  TRADING PERFORMANCE & PROFITABILITY", new Color(0x166534)));
+        JPanel sec3 = new JPanel(new GridBagLayout());
+        sec3.setOpaque(false);
+        valRevenue     = investStatRow(sec3, 0, "Net Sales Revenue Earned",                   "Rs. 0.00", false, new Color(0x374151));
+        valCogsProfit  = investStatRow(sec3, 1, "Cost of Goods Sold (COGS)",                  "Rs. 0.00", false, new Color(0xD97706));
+        valGrossProfit = investStatRow(sec3, 2, "GROSS PROFIT",                               "Rs. 0.00", true,  new Color(0x16A34A));
+        valExpensesP   = investStatRow(sec3, 3, "Operating Expenses (Rent / Utilities / etc)","Rs. 0.00", false, new Color(0xEA580C));
+        valNetProfit   = investStatRow(sec3, 4, "NET OPERATING PROFIT",                       "Rs. 0.00", true,  new Color(0x15803D));
+        content.add(sec3);
+        content.add(Box.createVerticalStrut(14));
+
+        // Section 4 – Cash
+        content.add(investSectionHeader("4.  CASH POSITION & RECEIVABLES", new Color(0x6D28D9)));
+        JPanel sec4 = new JPanel(new GridBagLayout());
+        sec4.setOpaque(false);
+        valCashColl   = investStatRow(sec4, 0, "Cash Actually Collected to Date",             "Rs. 0.00", false, new Color(0x374151));
+        valCustKhata  = investStatRow(sec4, 1, "Customer Receivables (Khata / Udhaar)",       "Rs. 0.00", false, new Color(0xDC2626));
+        valSupplierPay= investStatRow(sec4, 2, "Supplier Outstanding Payables",               "Rs. 0.00", false, new Color(0xD97706));
+        valCashBal    = investStatRow(sec4, 3, "Current Total Cash & Bank Balance",           "Rs. 0.00", true,  new Color(0x059669));
+        content.add(sec4);
+
+        JScrollPane scroll = new JScrollPane(content);
         scroll.setBorder(BorderFactory.createLineBorder(UITheme.BORDER));
-        panel.add(scroll, BorderLayout.CENTER);
-
-        return panel;
+        scroll.getViewport().setBackground(UITheme.CARD_BG);
+        outer.add(scroll, BorderLayout.CENTER);
+        return outer;
     }
 
-    private JLabel createKpiCard(JPanel parent, String title, String value, Color accentColor) {
-        JPanel card = new JPanel(new BorderLayout(0, 4));
-        card.setBackground(UITheme.CARD_BG);
-        card.setBorder(new CompoundBorder(
-                new CompoundBorder(
-                        new shelflife.ui.theme.Styles.RoundedBorder(UITheme.BORDER, 1, 8),
-                        BorderFactory.createMatteBorder(0, 4, 0, 0, accentColor != null ? accentColor : UITheme.PRIMARY)
-                ),
-                new EmptyBorder(10, 12, 10, 12)
+    /** Colored left-bar section header for the investment statement. */
+    private JPanel investSectionHeader(String text, Color color) {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setOpaque(true);
+        int r = Math.min(255, color.getRed() + 200);
+        int gr = Math.min(255, color.getGreen() + 200);
+        int b = Math.min(255, color.getBlue() + 200);
+        p.setBackground(new Color(r, gr, b, 40));
+        p.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 4, 0, 0, color),
+            new EmptyBorder(7, 12, 7, 12)
         ));
+        p.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
+        JLabel lbl = new JLabel(text);
+        lbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        lbl.setForeground(color);
+        p.add(lbl);
+        return p;
+    }
+
+    /** A label-value row inside the investment statement GridBagLayout panel. */
+    private JLabel investStatRow(JPanel parent, int row, String label, String initVal, boolean isBold, Color valColor) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 12, 5, 12);
+        gbc.gridy = row;
+
+        gbc.gridx = 0;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        JLabel lblName = new JLabel(label);
+        lblName.setFont(isBold ? new Font("Segoe UI", Font.BOLD, 13) : new Font("Segoe UI", Font.PLAIN, 13));
+        lblName.setForeground(isBold ? new Color(0x1F2937) : new Color(0x374151));
+        if (isBold) {
+            lblName.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(0xE5E7EB)),
+                new EmptyBorder(3, 0, 1, 0)
+            ));
+        }
+        parent.add(lblName, gbc);
+
+        gbc.gridx = 1;
+        gbc.anchor = GridBagConstraints.EAST;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        JLabel lblVal = new JLabel(initVal);
+        lblVal.setFont(isBold ? new Font("Segoe UI", Font.BOLD, 13) : new Font("Segoe UI", Font.PLAIN, 13));
+        lblVal.setForeground(valColor);
+        if (isBold) {
+            lblVal.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(0xE5E7EB)));
+        }
+        parent.add(lblVal, gbc);
+        return lblVal;
+    }
+
+    private JLabel createKpiCard(JPanel parent, String title, String value, final Color accentColor) {
+        final Color accent = accentColor != null ? accentColor : UITheme.PRIMARY;
+        JPanel card = new JPanel(new BorderLayout(0, 4)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                // Rounded white/card background
+                g2.setColor(UITheme.CARD_BG);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                // Colored left accent bar (painted, not a border)
+                g2.setColor(accent);
+                g2.fillRoundRect(0, 0, 6, getHeight(), 6, 6);
+                g2.fillRect(3, 0, 3, getHeight());
+                // Light border outline
+                g2.setColor(UITheme.BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
+                g2.dispose();
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(10, 16, 10, 12));
 
         JLabel lblTitle = new JLabel(title.toUpperCase());
         lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 10));
         lblTitle.setForeground(UITheme.TEXT_MUTED);
+        lblTitle.setBorder(new EmptyBorder(0, 0, 0, 0));
 
         JLabel lblVal = new JLabel(value);
         lblVal.setFont(new Font("Segoe UI", Font.BOLD, 15));
-        lblVal.setForeground(accentColor != null ? accentColor : UITheme.TEXT_MAIN);
+        lblVal.setForeground(accent);
+        lblVal.setBorder(new EmptyBorder(0, 0, 0, 0));
 
         card.add(lblTitle, BorderLayout.NORTH);
         card.add(lblVal, BorderLayout.CENTER);
@@ -530,65 +643,43 @@ public class DashboardReportsPanel extends JPanel implements Refreshable {
     }
 
     private void renderInvestmentRecoveryText(Map<String, Object> rec) {
-        if (txtInvestmentRecovery == null || rec == null) return;
+        if (rec == null) return;
 
-        BigDecimal capitalContributed = (BigDecimal) rec.get("capitalContributed");
-        BigDecimal ownerWithdrawals   = (BigDecimal) rec.get("ownerWithdrawals");
-        BigDecimal netCapital         = (BigDecimal) rec.get("netCapital");
-        BigDecimal stockPurchased     = (BigDecimal) rec.get("totalStockPurchased");
-        BigDecimal inventoryAtCost    = (BigDecimal) rec.get("inventoryAtCost");
-        BigDecimal cogs               = (BigDecimal) rec.get("cogs");
-        BigDecimal netRevenue         = (BigDecimal) rec.get("netSalesRevenue");
-        BigDecimal grossProfit        = (BigDecimal) rec.get("grossProfit");
-        BigDecimal expenses           = (BigDecimal) rec.get("operatingExpenses");
-        BigDecimal netProfit          = (BigDecimal) rec.get("netProfit");
-        BigDecimal cashCollected     = (BigDecimal) rec.get("cashCollected");
-        BigDecimal customerKhata      = (BigDecimal) rec.get("customerReceivables");
-        BigDecimal supplierPayable    = (BigDecimal) rec.get("supplierPayables");
-        BigDecimal cashBalance        = (BigDecimal) rec.get("currentCashBalance");
+        BigDecimal capitalContributed = safeGet(rec, "capitalContributed");
+        BigDecimal ownerWithdrawals   = safeGet(rec, "ownerWithdrawals");
+        BigDecimal netCapital         = safeGet(rec, "netCapital");
+        BigDecimal stockPurchased     = safeGet(rec, "totalStockPurchased");
+        BigDecimal inventoryAtCost    = safeGet(rec, "inventoryAtCost");
+        BigDecimal cogs               = safeGet(rec, "cogs");
+        BigDecimal netRevenue         = safeGet(rec, "netSalesRevenue");
+        BigDecimal grossProfit        = safeGet(rec, "grossProfit");
+        BigDecimal expenses           = safeGet(rec, "operatingExpenses");
+        BigDecimal netProfit          = safeGet(rec, "netProfit");
+        BigDecimal cashCollected      = safeGet(rec, "cashCollected");
+        BigDecimal customerKhata      = safeGet(rec, "customerReceivables");
+        BigDecimal supplierPayable    = safeGet(rec, "supplierPayables");
+        BigDecimal cashBalance        = safeGet(rec, "currentCashBalance");
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("========================================================================================\n");
-        sb.append("                  SHELFLIFE COMMERCIAL INVESTMENT & CAPITAL RECOVERY STATEMENT          \n");
-        sb.append("========================================================================================\n\n");
+        if (valCapContrib  != null) valCapContrib.setText(CurrencyUtil.format(capitalContributed));
+        if (valOwnerWithdr != null) valOwnerWithdr.setText(CurrencyUtil.format(ownerWithdrawals));
+        if (valNetCapital  != null) valNetCapital.setText(CurrencyUtil.format(netCapital));
+        if (valStockPurch  != null) valStockPurch.setText(CurrencyUtil.format(stockPurchased));
+        if (valInvRemaining!= null) valInvRemaining.setText(CurrencyUtil.format(inventoryAtCost));
+        if (valCogsInv     != null) valCogsInv.setText(CurrencyUtil.format(cogs));
+        if (valRevenue     != null) valRevenue.setText(CurrencyUtil.format(netRevenue));
+        if (valCogsProfit  != null) valCogsProfit.setText(CurrencyUtil.format(cogs));
+        if (valGrossProfit != null) valGrossProfit.setText(CurrencyUtil.format(grossProfit));
+        if (valExpensesP   != null) valExpensesP.setText(CurrencyUtil.format(expenses));
+        if (valNetProfit   != null) valNetProfit.setText(CurrencyUtil.format(netProfit));
+        if (valCashColl    != null) valCashColl.setText(CurrencyUtil.format(cashCollected));
+        if (valCustKhata   != null) valCustKhata.setText(CurrencyUtil.format(customerKhata));
+        if (valSupplierPay != null) valSupplierPay.setText(CurrencyUtil.format(supplierPayable));
+        if (valCashBal     != null) valCashBal.setText(CurrencyUtil.format(cashBalance));
+    }
 
-        sb.append(String.format("1. EQUITY & CAPITAL POSITION:\n"));
-        sb.append(String.format("   • Total Capital Contributed by Owner:      %15s\n", CurrencyUtil.format(capitalContributed)));
-        sb.append(String.format("   • Owner Withdrawals (Personal Drawings): - %15s\n", CurrencyUtil.format(ownerWithdrawals)));
-        sb.append(String.format("   ------------------------------------------------------------\n"));
-        sb.append(String.format("   • NET CAPITAL INTRODUCED:                  %15s\n\n", CurrencyUtil.format(netCapital)));
-
-        sb.append(String.format("2. INVENTORY INVESTMENT & RECOVERY:\n"));
-        sb.append(String.format("   • Total Stock Purchases (Goods In):        %15s\n", CurrencyUtil.format(stockPurchased)));
-        sb.append(String.format("   • Inventory Remaining at Cost (Unsold):    %15s\n", CurrencyUtil.format(inventoryAtCost)));
-        sb.append(String.format("   • Investment Consumed Through Sales (COGS):%15s\n\n", CurrencyUtil.format(cogs)));
-
-        sb.append(String.format("3. TRADING PERFORMANCE & PROFITABILITY:\n"));
-        sb.append(String.format("   • Net Sales Revenue Earned:                %15s\n", CurrencyUtil.format(netRevenue)));
-        sb.append(String.format("   • Cost of Goods Sold (COGS):             - %15s\n", CurrencyUtil.format(cogs)));
-        sb.append(String.format("   ------------------------------------------------------------\n"));
-        sb.append(String.format("   • GROSS PROFIT:                            %15s\n", CurrencyUtil.format(grossProfit)));
-        sb.append(String.format("   • Operating Expenses (Rent/Utilities/etc): - %15s\n", CurrencyUtil.format(expenses)));
-        sb.append(String.format("   ------------------------------------------------------------\n"));
-        sb.append(String.format("   • NET OPERATING PROFIT:                    %15s\n\n", CurrencyUtil.format(netProfit)));
-
-        sb.append(String.format("4. CASH POSITION & RECEIVABLES/PAYABLES:\n"));
-        sb.append(String.format("   • Cash Actually Collected to Date:        %15s\n", CurrencyUtil.format(cashCollected)));
-        sb.append(String.format("   • Customer Receivables (Khata / Udhaar):   %15s\n", CurrencyUtil.format(customerKhata)));
-        sb.append(String.format("   • Supplier Outstanding Payables:           %15s\n", CurrencyUtil.format(supplierPayable)));
-        sb.append(String.format("   • Current Total Cash & Bank Balance:       %15s\n\n", CurrencyUtil.format(cashBalance)));
-
-        sb.append("========================================================================================\n");
-        sb.append("COMMERCIAL ACCOUNTING EXPLANATION FOR RETAIL OWNER:\n");
-        sb.append(String.format("• %s remains safely invested in physical unsold inventory on shelves.\n", CurrencyUtil.format(inventoryAtCost)));
-        sb.append(String.format("• %s was the actual landed cost of the stock that was successfully sold.\n", CurrencyUtil.format(cogs)));
-        sb.append(String.format("• %s is earned trading profit, not the simple difference between cash in and out.\n", CurrencyUtil.format(netProfit)));
-        sb.append(String.format("• %s was collected in liquid cash; %s is still due from customer Khata.\n", CurrencyUtil.format(cashCollected), CurrencyUtil.format(customerKhata)));
-        sb.append("• Inventory purchases are capitalized as assets and NEVER double-counted as expenses.\n");
-        sb.append("========================================================================================\n");
-
-        txtInvestmentRecovery.setText(sb.toString());
-        txtInvestmentRecovery.setCaretPosition(0);
+    private BigDecimal safeGet(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        return (v instanceof BigDecimal) ? (BigDecimal) v : BigDecimal.ZERO;
     }
 
     private void exportTableToCSV(JTable table, String defaultFilename) {

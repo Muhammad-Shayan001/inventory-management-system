@@ -56,6 +56,7 @@ public class AuthServiceImpl implements AuthService {
                     throw new SecurityException("User account is deactivated. Contact Administrator.");
                 }
                 if (PasswordUtil.verifyPassword(password, u.getSalt(), u.getPasswordHash())) {
+                    upgradeHashIfNeeded(u, password);
                     this.currentUser = u;
                     return u;
                 } else {
@@ -64,6 +65,21 @@ public class AuthServiceImpl implements AuthService {
             }
         }
         throw new SecurityException("Invalid username or password.");
+    }
+
+    /** Re-hashes an account that still uses the old SHA-256 format; failure must never block the login. */
+    private void upgradeHashIfNeeded(User u, String password) {
+        if (!PasswordUtil.needsUpgrade(u.getPasswordHash())) {
+            return;
+        }
+        try {
+            String newSalt = PasswordUtil.generateSalt();
+            u.setSalt(newSalt);
+            u.setPasswordHash(PasswordUtil.hashPassword(password, newSalt));
+            dataStore.saveUsers(new ArrayList<>(userCache));
+        } catch (Exception e) {
+            System.out.println("Warning: could not upgrade password hash for " + u.getUsername() + ": " + e.getMessage());
+        }
     }
 
     @Override

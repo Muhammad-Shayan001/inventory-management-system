@@ -1,0 +1,26 @@
+# Build output
+build/
+dist/
+out/
+bin/
+*.class
+*.jar
+
+# Runtime data created by the app (kept out of Git so real shop data is never published)
+data/*
+!data/.gitkeep
+demo-data/
+*.bak
+
+# Logs and scratch files
+*.log
+tmp*.txt
+temp*.txt
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+nbproject/private/
+.DS_Store
+Thumbs.db

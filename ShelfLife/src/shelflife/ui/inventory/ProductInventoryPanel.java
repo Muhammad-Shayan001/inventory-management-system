@@ -1042,54 +1042,10 @@ public class ProductInventoryPanel extends JPanel implements shelflife.ui.Refres
     }
 
     private void importProductsCsv() {
-        JFileChooser fc = new JFileChooser();
-        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File f = fc.getSelectedFile();
-            int imported = 0;
-            int errors = 0;
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
-                String line = br.readLine(); // header
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) continue;
-                    String[] parts = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
-                    if (parts.length >= 5) {
-                        try {
-                            String pId = cleanCsvCell(parts[0]);
-                            String pName = cleanCsvCell(parts[1]);
-                            String pCat = cleanCsvCell(parts[2]);
-                            BigDecimal price = new BigDecimal(cleanCsvCell(parts[3]));
-                            int threshold = Integer.parseInt(cleanCsvCell(parts[4]));
-                            boolean active = parts.length > 5 ? Boolean.parseBoolean(cleanCsvCell(parts[5])) : true;
-                            String barcode = parts.length > 6 ? cleanCsvCell(parts[6]) : "";
-                            String sku = parts.length > 7 ? cleanCsvCell(parts[7]) : "";
-
-                            Product existing = inventoryService.getProductById(pId);
-                            if (existing == null) {
-                                Product np = new Product(pId, pName, pCat, price, threshold, barcode, sku, active);
-                                inventoryService.addProduct(np);
-                            } else {
-                                existing.setName(pName);
-                                existing.setCategory(pCat);
-                                existing.setSellingPrice(price);
-                                existing.setLowStockThreshold(threshold);
-                                existing.setActive(active);
-                                existing.setBarcode(barcode);
-                                existing.setSku(sku);
-                                inventoryService.updateProduct(existing);
-                            }
-                            imported++;
-                        } catch (Exception rowEx) {
-                            errors++;
-                        }
-                    }
-                }
-                refreshData();
-                JOptionPane.showMessageDialog(this, String.format("CSV Import finished: %d products processed, %d errors/skipped.", imported, errors), "Import Complete", JOptionPane.INFORMATION_MESSAGE);
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "CSV Import failed: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-            }
-        }
+        Frame parent = (Frame) SwingUtilities.getWindowAncestor(this);
+        ProductImportDialog dlg = new ProductImportDialog(parent, inventoryService);
+        dlg.setVisible(true);
+        refreshData();
     }
 
     private String escapeCsv(String val) {

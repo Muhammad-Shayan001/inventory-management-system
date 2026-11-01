@@ -1,211 +1,186 @@
 package shelflife.ui.chart;
 
-import shelflive.ui.theme.Theme;
-import shelflive.ui.theme.Styles;
+import shelflife.ui.theme.Theme;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.geom.*;
-import java.util.*;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * Bar chart panel with vertical, horizontal, and grouped modes.
+ * Vertical bar chart with an optional second series (grouped bars),
+ * grid lines, readable axis labels and hover tooltips.
  */
-public class BarChartPanel extends JPanel {
+public class BarChartPanel extends AbstractChartPanel {
 
-    private enum Mode { VERTICAL, HORIZONTAL, GROUPED }
+    private static final int LEFT_AXIS = 42;
+    private static final int BOTTOM_AXIS = 22;
 
-    private String title;
-    private String subtitle;
-    private Mode mode;
-    private List<String> categoryNames;
-    private List<BigDecimal> values;
-    private List<BigDecimal> secondaryValues; // for grouped bars
-    private List<String> legendLabels;
+    private List<String> names = Collections.emptyList();
+    private List<BigDecimal> primary = Collections.emptyList();
+    private List<BigDecimal> secondary = Collections.emptyList();
+    private String primaryLabel = "";
+    private String secondaryLabel = "";
+
+    private int plotX;
+    private int plotW;
 
     public BarChartPanel() {
-        setPreferredSize(new Dimension(400, 250));
-        setMinimumSize(new Dimension(300, 200));
-        setMaximumSize(new Dimension(800, 400));
-        setBackground(Theme.BG_CARD);
-        setBorder(new RoundedBorder(Theme.BORDER_LIGHT, 1, Theme.CORNER_RADIUS));
+        super(420, 260);
+        setToolTipText("");
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent e) {
+                setToolTipText(null);
+            }
+        });
     }
 
-    public void setData(String title, String subtitle, Mode mode,
-                        List<String> categoryNames, List<BigDecimal> values,
-                        List<BigDecimal> secondaryValues, List<String> legendLabels) {
-        this.title = title;
-        this.subtitle = subtitle;
-        this.mode = mode;
-        this.categoryNames = categoryNames;
-        this.values = values;
-        this.secondaryValues = secondaryValues;
-        this.legendLabels = legendLabels;
+    /** Single series. */
+    public void setData(String title, String subtitle, List<String> names, List<BigDecimal> values) {
+        setGroupedData(title, subtitle, names, values, null, "", "");
+    }
+
+    /** Two series drawn side by side. Pass null for the second to get a single series. */
+    public void setGroupedData(String title, String subtitle, List<String> names,
+                               List<BigDecimal> first, List<BigDecimal> second,
+                               String firstLabel, String secondLabel) {
+        setHeader(title, subtitle);
+        this.names = names == null ? new ArrayList<String>() : new ArrayList<String>(names);
+        this.primary = first == null ? new ArrayList<BigDecimal>() : new ArrayList<BigDecimal>(first);
+        this.secondary = second == null ? new ArrayList<BigDecimal>() : new ArrayList<BigDecimal>(second);
+        this.primaryLabel = firstLabel == null ? "" : firstLabel;
+        this.secondaryLabel = secondLabel == null ? "" : secondLabel;
         repaint();
     }
 
     public void clear() {
-        this.mode = null;
-        this.categoryNames = null;
-        this.values = null;
-        this.secondaryValues = null;
-        this.legendLabels = null;
-        repaint();
+        setData("", "", null, null);
     }
 
     @Override
-    protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D) g.create();
+    protected boolean isEmpty() {
+        if (names.isEmpty() || primary.isEmpty()) {
+            return true;
+        }
+        for (BigDecimal v : primary) {
+            if (v != null && v.signum() > 0) {
+                return false;
+            }
+        }
+        for (BigDecimal v : secondary) {
+            if (v != null && v.signum() > 0) {
+                return false;
+            }
+        }
+        return true;
+    }
 
-        // Anti-aliasing
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
-        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+    private boolean grouped() {
+        return !secondary.isEmpty();
+    }
 
-        int w = getWidth();
-        int h = getHeight();
-        Insets insets = getInsets();
-        int plotW = w - insets.left - insets.right - 30;
-        int plotH = h - insets.top - insets.bottom - 40;
+    @Override
+    protected void paintBody(Graphics2D g2, int x, int y, int w, int h) {
+        double max = 0;
+        for (BigDecimal v : primary) {
+            max = Math.max(max, v == null ? 0 : v.doubleValue());
+        }
+        for (BigDecimal v : secondary) {
+            max = Math.max(max, v == null ? 0 : v.doubleValue());
+        }
+        double top = niceMax(max);
 
-        if (mode == null || categoryNames == null || categoryNames.isEmpty()) {
-            // Empty state
+        int legendH = grouped() ? 16 : 0;
+        int chartTop = y + legendH;
+        int chartH = h - BOTTOM_AXIS - legendH;
+        int baseY = chartTop + chartH;
+        plotX = x + LEFT_AXIS;
+        plotW = w - LEFT_AXIS;
+
+        g2.setFont(small());
+        FontMetrics fm = g2.getFontMetrics();
+
+        // grid + y labels
+        int ticks = 4;
+        for (int i = 0; i <= ticks; i++) {
+            int gy = baseY - (int) Math.round(chartH * i / (double) ticks);
+            g2.setColor(i == 0 ? Theme.BORDER_LIGHT : Theme.BG_TABLE_ROW_ALT);
+            g2.drawLine(plotX, gy, plotX + plotW, gy);
             g2.setColor(Theme.TEXT_HINT);
-            g2.setFont(Theme.FONT_SUBTITLE);
-            String msg = "No data for this period.";
-            int msgW = g2.getFontMetrics().stringWidth(msg);
-            g2.drawString(msg, (w - msgW) / 2, h / 2);
-            g2.dispose();
+            String label = compact(BigDecimal.valueOf(top * i / ticks));
+            g2.drawString(label, plotX - 6 - fm.stringWidth(label), gy + 4);
+        }
+
+        int n = names.size();
+        double slot = plotW / (double) n;
+        double groupW = Math.min(56, slot * 0.7);
+        double barW = grouped() ? groupW / 2 : groupW;
+        int labelEvery = Math.max(1, (int) Math.ceil(30 / slot));
+
+        for (int i = 0; i < n; i++) {
+            double slotX = plotX + i * slot + (slot - groupW) / 2;
+            drawBar(g2, slotX, baseY, chartH, top, valueAt(primary, i), barW, Theme.ACCENT_PRIMARY);
+            if (grouped()) {
+                drawBar(g2, slotX + barW, baseY, chartH, top, valueAt(secondary, i), barW, PALETTE[1]);
+            }
+            if (i % labelEvery == 0) {
+                g2.setColor(Theme.TEXT_SECONDARY);
+                String label = fit(fm, names.get(i), (int) slot * labelEvery - 4);
+                int lx = (int) (plotX + i * slot + slot / 2 - fm.stringWidth(label) / 2.0);
+                g2.drawString(label, lx, baseY + 15);
+            }
+        }
+
+        if (grouped()) {
+            g2.setColor(Theme.ACCENT_PRIMARY);
+            g2.fillRect(plotX, y + 2, 10, 10);
+            g2.setColor(Theme.TEXT_SECONDARY);
+            g2.drawString(primaryLabel, plotX + 14, y + 11);
+            int second = plotX + 22 + fm.stringWidth(primaryLabel) + 10;
+            g2.setColor(PALETTE[1]);
+            g2.fillRect(second, y + 2, 10, 10);
+            g2.setColor(Theme.TEXT_SECONDARY);
+            g2.drawString(secondaryLabel, second + 14, y + 11);
+        }
+    }
+
+    private static BigDecimal valueAt(List<BigDecimal> list, int i) {
+        return i < list.size() && list.get(i) != null ? list.get(i) : BigDecimal.ZERO;
+    }
+
+    private static void drawBar(Graphics2D g2, double x, int baseY, int chartH, double top,
+                                BigDecimal value, double width, java.awt.Color color) {
+        if (value.signum() <= 0) {
             return;
         }
+        int bh = (int) Math.max(2, Math.round(chartH * value.doubleValue() / top));
+        g2.setColor(color);
+        g2.fillRoundRect((int) x, baseY - bh, (int) Math.max(3, width - 2), bh, 6, 6);
+        g2.fillRect((int) x, baseY - Math.min(bh, 6), (int) Math.max(3, width - 2), Math.min(bh, 6));
+    }
 
-        // Determine Y scale
-        BigDecimal maxY = BigDecimal.ZERO;
-        if (values != null) {
-            for (BigDecimal v : values) {
-                if (v != null && v.compareTo(maxY) > 0) maxY = v;
-            }
+    @Override
+    public String getToolTipText(MouseEvent e) {
+        if (names.isEmpty() || plotW <= 0) {
+            return null;
         }
-        if (secondaryValues != null) {
-            for (BigDecimal v : secondaryValues) {
-                if (v != null && v.compareTo(maxY) > 0) maxY = v;
-            }
+        double slot = plotW / (double) names.size();
+        int i = (int) ((e.getX() - plotX) / slot);
+        if (i < 0 || i >= names.size()) {
+            return null;
         }
-
-        // Add padding
-        BigDecimal range = maxY.multiply(new BigDecimal("1.2"));
-        if (maxY.compareTo(BigDecimal.ZERO) == 0) range = BigDecimal.ONE;
-        BigDecimal minPadded = BigDecimal.ZERO;
-
-        double yScale = (double) plotH / range.stripTrailingZeros().doubleValue();
-        double yOffset = 0; // starting from 0
-
-        // Draw title
-        g2.setColor(Theme.TEXT_PRIMARY);
-        g2.setFont(Theme.FONT_SECTION);
-        String titleText = title != null ? title : "Chart";
-        int titleW = g2.getFontMetrics().stringWidth(titleText);
-        g2.drawString(titleText, (w - titleW) / 2, insets.top + 20);
-
-        // Draw subtitle
-        if (subtitle != null) {
-            g2.setColor(Theme.TEXT_SECONDARY);
-            g2.setFont(Theme.FONT_SUBTITLE);
-            g2.drawString(subtitle, (w - g2.getFontMetrics().stringWidth(subtitle)) / 2, insets.top + 40);
+        String text = names.get(i) + ": " + valueAt(primary, i).stripTrailingZeros().toPlainString();
+        if (grouped()) {
+            text = names.get(i) + " - " + primaryLabel + ": "
+                    + valueAt(primary, i).stripTrailingZeros().toPlainString()
+                    + ", " + secondaryLabel + ": "
+                    + valueAt(secondary, i).stripTrailingZeros().toPlainString();
         }
-
-        // Draw bars
-        int barCount = categoryNames.size();
-        int barWidth = Math.max(20, (plotW - 30) / barCount / 2);
-        int barSpacing = 8;
-
-        boolean isGrouped = mode == Mode.GROUPED && secondaryValues != null && secondaryValues.size() == values.size();
-
-        for (int i = 0; i < barCount; i++) {
-            BigDecimal value = values != null && i < values.size() ? values.get(i) : null;
-            BigDecimal secValue = isGrouped && secondaryValues != null && i < secondaryValues.size() ? secondaryValues.get(i) : null;
-
-            String category = i < categoryNames.size() ? categoryNames.get(i) : "Category " + i;
-            String legend = i < legendLabels.size() ? legendLabels.get(i) : "";
-
-            double valueHeight = (value != null && value.compareTo(BigDecimal.ZERO) > 0)
-                    ? value.stripTrailingZeros().doubleValue() * yScale
-                    : 0;
-
-            double secHeight = (secValue != null && secValue.compareTo(BigDecimal.ZERO) > 0)
-                    ? secValue.stripTrailingZeros().doubleValue() * yScale
-                    : 0;
-
-            double x = insets.left + 20 + i * (barWidth * 2 + barSpacing);
-            double y = getHeight() - insets.bottom - 20 - valueHeight;
-
-            // Determine colors
-            Color barColor = Theme.ACCENT_PRIMARY;
-            Color secBarColor = Theme.ACCENT_PRIMARY_HOVER;
-
-            // Draw secondary bar (grouped)
-            if (isGrouped && secValue != null && secValue.compareTo(BigDecimal.ZERO) > 0) {
-                double secX = x + barWidth + barSpacing / 2;
-                double secY = getHeight() - insets.bottom - 20 - secHeight;
-                g2.setColor(secBarColor);
-                g2.fillRoundRect((int) secX, (int) secY, barWidth, (int) secHeight,
-                        4, 4); // rounded top corners
-            }
-
-            // Draw main bar
-            if (value != null && value.compareTo(BigDecimal.ZERO) > 0) {
-                g2.setColor(barColor);
-                g2.fillRoundRect((int) x, (int) y, barWidth, (int) valueHeight,
-                        4, 4); // rounded top corners
-            }
-
-            // Draw value label above bar
-            if (value != null && value.compareTo(BigDecimal.ZERO) > 0) {
-                g2.setColor(Theme.TEXT_PRIMARY);
-                g2.setFont(Theme.FONT_SMALL);
-                String label = value.stripTrailingZeros().toPlainString();
-                int labelW = g2.getFontMetrics().stringWidth(label);
-                int labelX = (int) (x + barWidth / 2 - labelW / 2);
-                int labelY = (int) (y - 8);
-                g2.drawString(label, labelX, labelY);
-            }
-        }
-
-        // Draw legend (for grouped mode)
-        if (isGrouped && legendLabels != null) {
-            for (int i = 0; i < legendLabels.size(); i++) {
-                String legend = legendLabels.get(i);
-                g2.setColor(i == 0 ? Theme.ACCENT_PRIMARY : Theme.ACCENT_PRIMARY_HOVER);
-                g2.fillRect(insets.left + 20, insets.top + 60 + i * 20, 16, 16);
-                g2.setColor(Theme.TEXT_PRIMARY);
-                g2.setFont(Theme.FONT_SMALL);
-                int labelW = g2.getFontMetrics().stringWidth(legend);
-                g2.drawString(legend, insets.left + 40, insets.top + 65 + i * 20);
-            }
-        }
-
-        // Draw X axis labels
-        g2.setColor(Theme.TEXT_SECONDARY);
-        g2.setFont(Theme.FONT_SMALL);
-        for (int i = 0; i < categoryNames.size(); i++) {
-            String label = categoryNames.get(i);
-            // Shorten long labels
-            if (label.length() > 15) label = label.substring(0, 15) + "...";
-            int x = insets.left + 20 + i * (barWidth * 2 + barSpacing) + barWidth / 2;
-            int y = getHeight() - insets.bottom - 2;
-            int labelW = g2.getFontMetrics().stringWidth(label);
-            g2.drawString(label, x - labelW / 2, y);
-        }
-
-        // Draw Y axis label
-        g2.setColor(Theme.TEXT_PRIMARY);
-        g2.setFont(Theme.FONT_HINT);
-        String yLabel = "Rs.";
-        int labelW = g2.getFontMetrics().stringWidth(yLabel);
-        g2.drawString(yLabel, insets.left + 10, insets.top + 15);
-
-        g2.dispose();
+        return text;
     }
 }
